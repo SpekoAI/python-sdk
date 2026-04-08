@@ -1,0 +1,14 @@
+{
+  "name": "sdk-python",
+  "projectType": "library",
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": { "command": "ruff check .", "cwd": "packages/sdk-python" }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": { "command": "pytest", "cwd": "packages/sdk-python" }
+    }
+  }
+}

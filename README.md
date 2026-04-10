@@ -1,6 +1,6 @@
 # spekoai (Python SDK)
 
-Official Python SDK for the [SpekoAI](https://spekoai.com) voice AI gateway.
+Official Python SDK for the [SpekoAI](https://speko.ai) voice AI gateway.
 
 SpekoAI is a voice AI gateway that runs the STT → LLM → TTS pipeline so you
 don't need to juggle separate API keys, credentials, and SDKs for each
@@ -37,7 +37,7 @@ print("Token:", session.token)
 
 ## Documentation
 
-Full API reference and guides: <https://docs.spekoai.com>
+Full API reference and guides: <https://docs.speko.dev/python-sdk>
 
 ## Contributing
 

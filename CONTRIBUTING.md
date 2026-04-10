@@ -5,7 +5,7 @@ repository.
 
 ## How contributions flow
 
-`spekoai/sdk-python` is a public mirror of a package that lives inside an
+`SpekoAI/python-sdk` is a public mirror of a package that lives inside an
 internal SpekoAI monorepo. When a PR is merged here, an automated workflow
 opens a follow-up PR in the monorepo to import the change; once that merges,
 the SDK's next release includes it.
@@ -21,8 +21,8 @@ This means:
 ## Local development
 
 ```bash
-git clone https://github.com/spekoai/sdk-python.git
-cd sdk-python
+git clone https://github.com/SpekoAI/python-sdk.git
+cd python-sdk
 pip install -e '.[dev]'
 pytest
 ruff check .

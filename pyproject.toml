@@ -38,10 +38,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/spekoai/sdk-python"
-Repository = "https://github.com/spekoai/sdk-python"
-Issues = "https://github.com/spekoai/sdk-python/issues"
-Changelog = "https://github.com/spekoai/sdk-python/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/SpekoAI/python-sdk"
+Repository = "https://github.com/SpekoAI/python-sdk"
+Issues = "https://github.com/SpekoAI/python-sdk/issues"
+Changelog = "https://github.com/SpekoAI/python-sdk/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/spekoai"]

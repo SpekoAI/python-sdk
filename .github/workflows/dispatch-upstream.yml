@@ -1,0 +1,26 @@
+name: Notify monorepo of mirror changes
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    # Skip release-commit pushes that originated from the monorepo's own
+    # sync — they're already in the monorepo. See plan §6.2.
+    if: "!contains(github.event.head_commit.message, 'chore(sdk-python): release')"
+    steps:
+      - name: Trigger monorepo inbound sync
+        env:
+          MONOREPO_PAT: ${{ secrets.MONOREPO_PAT }}
+        run: |
+          curl -fsSL -X POST \
+            -H "Authorization: Bearer ${MONOREPO_PAT}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/spekoai/monorepo/dispatches \
+            -d '{"event_type":"sdk-python-sync","client_payload":{"sha":"${{ github.sha }}"}}'

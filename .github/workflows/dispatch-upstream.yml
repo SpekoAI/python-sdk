@@ -10,9 +10,11 @@ permissions:
 jobs:
   dispatch:
     runs-on: ubuntu-latest
-    # Skip release-commit pushes that originated from the monorepo's own
-    # sync — they're already in the monorepo. See plan §6.2.
-    if: "!contains(github.event.head_commit.message, 'chore(sdk-python): release')"
+    # Skip pushes that originated from the monorepo's own outbound mirror
+    # workflow (`mirror-sdk-python.yml`). Those commits always start with the
+    # prefix below, carry the already-synced subtree, and dispatching on them
+    # would burn a no-op sync-from-mirrors run round-trip.
+    if: "!startsWith(github.event.head_commit.message, 'sync: import packages/sdk-python from monorepo @')"
     steps:
       - name: Trigger monorepo inbound sync
         env:

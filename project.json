@@ -7,21 +7,21 @@
       "executor": "nx:run-commands",
       "options": {
         "cwd": "packages/sdk-python",
-        "command": "command -v hatch >/dev/null && hatch build -c || echo 'hatch not installed, skipping build (real publish builds in mirror CI)'"
+        "command": "command -v uv >/dev/null && uv build || echo 'uv not installed, skipping build (real publish builds in mirror CI)'"
       }
     },
     "lint": {
       "executor": "nx:run-commands",
       "options": {
         "cwd": "packages/sdk-python",
-        "command": "command -v ruff >/dev/null && ruff check . || echo 'ruff not installed, skipping lint (real lint runs in mirror CI)'"
+        "command": "command -v uv >/dev/null && uv run --group dev ruff check . || echo 'uv not installed, skipping lint (real lint runs in mirror CI)'"
       }
     },
     "test": {
       "executor": "nx:run-commands",
       "options": {
         "cwd": "packages/sdk-python",
-        "command": "command -v pytest >/dev/null && pytest || echo 'pytest not installed, skipping'"
+        "command": "command -v uv >/dev/null && uv run --group dev pytest || echo 'uv not installed, skipping'"
       }
     }
   }

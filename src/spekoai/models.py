@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class SttConfig(BaseModel):
@@ -22,8 +22,7 @@ class LlmConfig(BaseModel):
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class TtsConfig(BaseModel):

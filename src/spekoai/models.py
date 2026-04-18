@@ -15,6 +15,8 @@ Vertical = Literal["general", "healthcare", "finance", "legal"]
 OptimizeFor = Literal["balanced", "accuracy", "latency", "cost"]
 ProviderModality = Literal["stt", "llm", "tts"]
 ChatRole = Literal["system", "user", "assistant"]
+KeySource = Literal["BYOK", "MANAGED"]
+CreditLedgerKind = Literal["grant", "debit", "topup", "refund", "adjustment"]
 
 
 class _SpekoModel(BaseModel):
@@ -117,6 +119,7 @@ class UsageByProvider(_SpekoModel):
     provider: str
     type: ProviderModality
     metric: str
+    key_source: KeySource
     quantity: float
     cost: float
 
@@ -126,3 +129,34 @@ class UsageSummary(_SpekoModel):
     total_minutes: float
     total_cost: float
     breakdown: list[UsageByProvider]
+    # bigint as string over the wire; exposed as Python str for lossless
+    # round-trips. Convert with `int(summary.balance_micro_usd)` when math
+    # is needed.
+    balance_micro_usd: str
+    balance_usd: float
+
+
+# --- Credits ----------------------------------------------------------------
+
+
+class OrganizationBalance(_SpekoModel):
+    balance_micro_usd: str
+    balance_usd: float
+    updated_at: str
+
+
+class CreditLedgerEntry(_SpekoModel):
+    id: str
+    kind: CreditLedgerKind
+    # Signed — positive for grants/topups/refunds, negative for debits.
+    # Kept as string so >2**53 values survive JSON.
+    amount_micro_usd: str
+    metric: Optional[str] = None
+    provider: Optional[str] = None
+    session_id: Optional[str] = None
+    created_at: str
+
+
+class CreditLedgerPage(_SpekoModel):
+    entries: list[CreditLedgerEntry]
+    next_cursor: Optional[str] = None

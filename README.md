@@ -1,11 +1,11 @@
 # spekoai (Python SDK)
 
-Official Python SDK for the [SpekoAI](https://speko.ai) voice AI gateway.
+Official Python SDK for [Speko](https://speko.ai) — one API, every voice provider.
 
-SpekoAI is a voice AI gateway that runs the STT → LLM → TTS pipeline so you
-don't need to juggle separate API keys, credentials, and SDKs for each
-provider. This SDK is the Python client for creating voice sessions, issuing
-LiveKit tokens, and managing pipeline configuration.
+Speko is a voice AI gateway that benchmarks every STT, LLM, and TTS provider
+across languages and verticals, then routes each request to the best provider
+in real time. Failover is handled. You write one integration; Speko picks the
+right provider for every call.
 
 ## Installation
 
@@ -19,25 +19,58 @@ uv add spekoai
 
 ```python
 import os
-from spekoai import SpekoAI
+from pathlib import Path
 
-client = SpekoAI(api_key=os.environ["SPEKOAI_API_KEY"])
+from spekoai import Speko
 
-session = client.sessions.create(
-    pipeline={
-        "stt": {"provider": "deepgram", "model": "nova-3"},
-        "llm": {"provider": "anthropic", "model": "claude-opus-4-6"},
-        "tts": {"provider": "elevenlabs", "voice_id": "rachel"},
-    }
+speko = Speko(api_key=os.environ["SPEKO_API_KEY"])
+
+# Transcribe — best STT provider auto-routed for your language + vertical
+audio = Path("call.wav").read_bytes()
+result = speko.transcribe(
+    audio,
+    language="es-MX",
+    vertical="healthcare",
 )
+print(result.text, result.provider, result.confidence)
 
-print("LiveKit URL:", session.livekit_url)
-print("Token:", session.token)
+# Synthesize — best TTS provider auto-routed
+speech = speko.synthesize(
+    "Hello world",
+    language="en",
+    vertical="general",
+)
+ext = "mp3" if "mpeg" in speech.content_type else "pcm"
+Path(f"out.{ext}").write_bytes(speech.audio)
+
+# Complete — best LLM provider auto-routed
+completion = speko.complete(
+    messages=[{"role": "user", "content": "Hi!"}],
+    intent={"language": "en", "vertical": "general"},
+)
+print(completion.text)
+```
+
+### Async
+
+```python
+import asyncio
+from spekoai import AsyncSpeko
+
+async def main():
+    async with AsyncSpeko(api_key=os.environ["SPEKO_API_KEY"]) as speko:
+        completion = await speko.complete(
+            messages=[{"role": "user", "content": "Hi!"}],
+            intent={"language": "en", "vertical": "general"},
+        )
+        print(completion.text)
+
+asyncio.run(main())
 ```
 
 ## Documentation
 
-Full API reference and guides: <https://docs.speko.dev/python-sdk>
+Full API reference and guides: <https://docs.speko.dev/sdk-python>
 
 ## Contributing
 

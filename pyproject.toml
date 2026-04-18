@@ -5,7 +5,7 @@ build-backend = "uv_build"
 [project]
 name = "spekoai"
 version = "0.0.1"
-description = "Official SpekoAI Python SDK — Voice AI gateway client"
+description = "Official Speko Python SDK — one API, every voice provider"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"
@@ -53,6 +53,10 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP"]
+# UP045 wants `X | None` instead of `Optional[X]`. With target-version = py39
+# and pydantic evaluating annotations at runtime, PEP 604 union syntax breaks
+# on 3.9, so stay on `Optional[...]` until we drop 3.9 support.
+ignore = ["UP045"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

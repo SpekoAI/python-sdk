@@ -20,7 +20,9 @@ from spekoai.errors import SpekoApiError, SpekoAuthError, SpekoRateLimitError
 from spekoai.models import (
     ChatMessage,
     CompleteResult,
+    CreditLedgerPage,
     OptimizeFor,
+    OrganizationBalance,
     PipelineConstraints,
     RoutingIntent,
     SynthesizeResult,
@@ -197,6 +199,17 @@ def _default_headers(api_key: str) -> dict[str, str]:
     }
 
 
+def _ledger_params(
+    limit: Optional[int], cursor: Optional[str]
+) -> dict[str, str]:
+    params: dict[str, str] = {}
+    if limit is not None:
+        params["limit"] = str(limit)
+    if cursor:
+        params["cursor"] = cursor
+    return params
+
+
 class _UsageResource:
     def __init__(self, client: httpx.Client) -> None:
         self._client = client
@@ -239,6 +252,65 @@ class _AsyncUsageResource:
         return UsageSummary.model_validate(resp.json())
 
 
+class _CreditsResource:
+    def __init__(self, client: httpx.Client) -> None:
+        self._client = client
+
+    def get_balance(self) -> OrganizationBalance:
+        """Current prepaid credit balance for the caller's org.
+
+        Example::
+
+            balance = speko.credits.get_balance()
+            if balance.balance_usd < 0.5:
+                print("Top up before running long sessions.")
+        """
+        resp = self._client.get("/v1/credits/balance")
+        _raise_for_status(resp)
+        return OrganizationBalance.model_validate(resp.json())
+
+    def get_ledger(
+        self,
+        *,
+        limit: Optional[int] = None,
+        cursor: Optional[str] = None,
+    ) -> CreditLedgerPage:
+        """Most-recent-first page of credit movements.
+
+        Pass back ``next_cursor`` as ``cursor`` to fetch the next page;
+        ``next_cursor is None`` means the history is exhausted.
+        """
+        resp = self._client.get(
+            "/v1/credits/ledger", params=_ledger_params(limit, cursor)
+        )
+        _raise_for_status(resp)
+        return CreditLedgerPage.model_validate(resp.json())
+
+
+class _AsyncCreditsResource:
+    def __init__(self, client: httpx.AsyncClient) -> None:
+        self._client = client
+
+    async def get_balance(self) -> OrganizationBalance:
+        """Current prepaid credit balance (async)."""
+        resp = await self._client.get("/v1/credits/balance")
+        _raise_for_status(resp)
+        return OrganizationBalance.model_validate(resp.json())
+
+    async def get_ledger(
+        self,
+        *,
+        limit: Optional[int] = None,
+        cursor: Optional[str] = None,
+    ) -> CreditLedgerPage:
+        """Most-recent-first page of credit movements (async)."""
+        resp = await self._client.get(
+            "/v1/credits/ledger", params=_ledger_params(limit, cursor)
+        )
+        _raise_for_status(resp)
+        return CreditLedgerPage.model_validate(resp.json())
+
+
 class Speko:
     """Speko client — one API, every voice provider.
 
@@ -256,6 +328,7 @@ class Speko:
     """
 
     usage: _UsageResource
+    credits: _CreditsResource
 
     def __init__(
         self,
@@ -275,6 +348,7 @@ class Speko:
             headers=_default_headers(api_key),
         )
         self.usage = _UsageResource(self._client)
+        self.credits = _CreditsResource(self._client)
 
     def close(self) -> None:
         self._client.close()
@@ -391,6 +465,7 @@ class AsyncSpeko:
     """
 
     usage: _AsyncUsageResource
+    credits: _AsyncCreditsResource
 
     def __init__(
         self,
@@ -410,6 +485,7 @@ class AsyncSpeko:
             headers=_default_headers(api_key),
         )
         self.usage = _AsyncUsageResource(self._client)
+        self.credits = _AsyncCreditsResource(self._client)
 
     async def close(self) -> None:
         await self._client.aclose()

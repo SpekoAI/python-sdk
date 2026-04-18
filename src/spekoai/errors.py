@@ -1,4 +1,4 @@
-"""Error types for the SpekoAI SDK."""
+"""Error types for the Speko Python SDK."""
 
 from __future__ import annotations
 
@@ -6,10 +6,11 @@ from typing import Optional
 
 
 class SpekoApiError(Exception):
-    """Base error for all SpekoAI API errors."""
+    """Base error for all Speko API errors."""
 
     def __init__(self, message: str, status: int, code: str = "UNKNOWN") -> None:
         super().__init__(message)
+        self.message = message
         self.status = status
         self.code = code
 

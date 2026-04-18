@@ -1,74 +1,128 @@
-"""Pydantic models for the SpekoAI API."""
+"""Pydantic models and literal types for the Speko Python SDK.
+
+All models serialize/validate using camelCase aliases to match the wire
+protocol, while exposing snake_case attributes on the Python side.
+"""
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Literal, Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
+
+Vertical = Literal["general", "healthcare", "finance", "legal"]
+OptimizeFor = Literal["balanced", "accuracy", "latency", "cost"]
+ProviderModality = Literal["stt", "llm", "tts"]
+ChatRole = Literal["system", "user", "assistant"]
 
 
-class SttConfig(BaseModel):
-    provider: Literal["deepgram"] = "deepgram"
-    model: Optional[str] = None
-    language: Optional[str] = None
-    keywords: Optional[list[str]] = None
+class _SpekoModel(BaseModel):
+    """Base model: camelCase wire aliases, snake_case Python fields."""
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        extra="ignore",
+    )
 
 
-class LlmConfig(BaseModel):
-    provider: Literal["openai"] = "openai"
-    model: str
-    system_prompt: Optional[str] = None
-    temperature: Optional[float] = None
-    max_tokens: Optional[int] = None
-
-    model_config = ConfigDict(populate_by_name=True)
+class AllowedProviders(_SpekoModel):
+    stt: Optional[list[str]] = None
+    llm: Optional[list[str]] = None
+    tts: Optional[list[str]] = None
 
 
-class TtsConfig(BaseModel):
-    provider: Literal["elevenlabs", "cartesia"]
-    voice: str
-    model: Optional[str] = None
-    speed: Optional[float] = None
+class PipelineConstraints(_SpekoModel):
+    """Optional allowlists layered on top of RoutingIntent.
+
+    The router still ranks candidates by benchmark score — but if an
+    ``allowed_providers`` list is set for a modality, only that subset
+    is considered.
+    """
+
+    allowed_providers: Optional[AllowedProviders] = None
 
 
-class PipelineConfig(BaseModel):
-    stt: SttConfig
-    llm: LlmConfig
-    tts: TtsConfig
+class RoutingIntent(_SpekoModel):
+    """Routing signal for the Speko router.
+
+    - ``language``: BCP-47 tag, e.g. ``"en"`` or ``"es-MX"``.
+    - ``vertical``: domain bucket used by the benchmark tables.
+    - ``optimize_for``: preset that biases the weighted score.
+    """
+
+    language: str
+    vertical: Vertical
+    optimize_for: Optional[OptimizeFor] = None
 
 
-class Session(BaseModel):
-    id: str
-    status: Literal["created", "connecting", "active", "ended", "failed"]
-    room_name: str
-    token: str
-    livekit_url: str
-    created_at: str
+class ChatMessage(_SpekoModel):
+    role: ChatRole
+    content: str
 
 
-class SessionDetail(BaseModel):
-    id: str
-    workspace_id: str
-    status: Literal["created", "connecting", "active", "ended", "failed"]
-    room_name: str
-    pipeline_config: PipelineConfig
-    metadata: dict[str, Any]
-    created_at: datetime
-    updated_at: datetime
-    ended_at: Optional[datetime] = None
+# --- Transcribe -------------------------------------------------------------
 
 
-class UsageByProvider(BaseModel):
+class TranscribeResult(_SpekoModel):
+    text: str
     provider: str
-    type: Literal["stt", "llm", "tts"]
+    model: str
+    confidence: Optional[float] = None
+    failover_count: int = 0
+    scores_run_id: Optional[str] = None
+
+
+# --- Synthesize -------------------------------------------------------------
+
+
+class SynthesizeResult(_SpekoModel):
+    """Result of a synthesize call.
+
+    ``audio`` holds the raw bytes. The format depends on the chosen
+    provider — check ``content_type`` (ElevenLabs returns
+    ``audio/mpeg``; Cartesia returns ``audio/pcm;rate=24000``).
+    """
+
+    audio: bytes
+    content_type: str
+    provider: str
+    model: str
+    failover_count: int = 0
+    scores_run_id: Optional[str] = None
+
+
+# --- Complete (LLM) ---------------------------------------------------------
+
+
+class CompleteUsage(_SpekoModel):
+    prompt_tokens: int
+    completion_tokens: int
+
+
+class CompleteResult(_SpekoModel):
+    text: str
+    provider: str
+    model: str
+    usage: CompleteUsage
+    failover_count: int = 0
+    scores_run_id: Optional[str] = None
+
+
+# --- Usage ------------------------------------------------------------------
+
+
+class UsageByProvider(_SpekoModel):
+    provider: str
+    type: ProviderModality
     metric: str
-    quantity: int
+    quantity: float
     cost: float
 
 
-class UsageSummary(BaseModel):
+class UsageSummary(_SpekoModel):
     total_sessions: int
-    total_minutes: int
+    total_minutes: float
     total_cost: float
     breakdown: list[UsageByProvider]

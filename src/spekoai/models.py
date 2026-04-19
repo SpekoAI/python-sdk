@@ -160,3 +160,45 @@ class CreditLedgerEntry(_SpekoModel):
 class CreditLedgerPage(_SpekoModel):
     entries: list[CreditLedgerEntry]
     next_cursor: Optional[str] = None
+
+
+# --- Realtime (S2S) ---------------------------------------------------------
+
+RealtimeProvider = Literal["openai", "google", "xai"]
+
+
+class RealtimeToolSpec(_SpekoModel):
+    name: str
+    description: str
+    parameters: dict[str, object]
+
+
+class RealtimeConnectParams(_SpekoModel):
+    """Parameters for opening an S2S realtime session.
+
+    Unlike cascade sessions, realtime bypasses LiveKit: the server proxies
+    the client WebSocket directly to the provider (OpenAI Realtime, Gemini
+    Live, xAI Grok Voice) so time-to-first-audio stays under ~300 ms.
+    """
+
+    provider: RealtimeProvider
+    model: str
+    voice: Optional[str] = None
+    system_prompt: Optional[str] = None
+    temperature: Optional[float] = None
+    input_sample_rate: Optional[Literal[16000, 24000]] = None
+    output_sample_rate: Optional[Literal[16000, 24000]] = None
+    tools: Optional[list[RealtimeToolSpec]] = None
+    metadata: Optional[dict[str, object]] = None
+    # Max session duration in seconds. Server-capped at 1800 (30 min).
+    ttl_seconds: Optional[int] = None
+
+
+class RealtimeSessionInfo(_SpekoModel):
+    """Raw response from POST /v1/sessions when mode == 's2s'."""
+
+    mode: Literal["s2s"]
+    session_id: str
+    ws_url: str
+    ws_token: str
+    expires_at: str

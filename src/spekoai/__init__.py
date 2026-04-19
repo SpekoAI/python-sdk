@@ -16,6 +16,10 @@ from spekoai.models import (
     OrganizationBalance,
     PipelineConstraints,
     ProviderModality,
+    RealtimeConnectParams,
+    RealtimeProvider,
+    RealtimeSessionInfo,
+    RealtimeToolSpec,
     RoutingIntent,
     SynthesizeResult,
     TranscribeResult,
@@ -23,10 +27,12 @@ from spekoai.models import (
     UsageSummary,
     Vertical,
 )
+from spekoai.realtime import AsyncRealtimeSession
 
 __all__ = [
     "Speko",
     "AsyncSpeko",
+    "AsyncRealtimeSession",
     "SpekoApiError",
     "SpekoAuthError",
     "SpekoRateLimitError",
@@ -43,6 +49,10 @@ __all__ = [
     "OrganizationBalance",
     "PipelineConstraints",
     "ProviderModality",
+    "RealtimeConnectParams",
+    "RealtimeProvider",
+    "RealtimeSessionInfo",
+    "RealtimeToolSpec",
     "RoutingIntent",
     "SynthesizeResult",
     "TranscribeResult",

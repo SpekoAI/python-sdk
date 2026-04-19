@@ -24,12 +24,15 @@ from spekoai.models import (
     OptimizeFor,
     OrganizationBalance,
     PipelineConstraints,
+    RealtimeConnectParams,
+    RealtimeSessionInfo,
     RoutingIntent,
     SynthesizeResult,
     TranscribeResult,
     UsageSummary,
     Vertical,
 )
+from spekoai.realtime import AsyncRealtimeSession, open_realtime_session
 
 DEFAULT_BASE_URL = "https://api.speko.ai"
 DEFAULT_TIMEOUT = 30.0
@@ -563,3 +566,46 @@ class AsyncSpeko:
         resp = await self._client.post("/v1/complete", json=body)
         _raise_for_status(resp)
         return CompleteResult.model_validate(resp.json())
+
+    async def connect_realtime(
+        self, params: RealtimeConnectParams
+    ) -> AsyncRealtimeSession:
+        """Open a speech-to-speech (S2S) session.
+
+        Posts ``/v1/sessions`` with ``mode='s2s'`` to mint a short-lived
+        WebSocket token, then opens the WS straight to the Speko proxy,
+        which bridges to the underlying provider (OpenAI Realtime, Gemini
+        Live, xAI Grok Voice). Skips LiveKit entirely so TTFT stays
+        under ~300 ms.
+
+        Example::
+
+            session = await speko.connect_realtime(
+                RealtimeConnectParams(provider="openai", model="gpt-realtime"),
+            )
+            async with session:
+                await session.send_audio(pcm_chunk)
+                async for frame in session:
+                    ...
+        """
+        body = params.model_dump(by_alias=True, exclude_none=True)
+        # The create-session schema expects the realtime config under `s2s`
+        # and a top-level `mode` discriminator; unpack metadata/ttl from the
+        # flattened params model.
+        wrapped = {
+            "mode": "s2s",
+            "s2s": {
+                k: v
+                for k, v in body.items()
+                if k not in ("metadata", "ttlSeconds")
+            },
+        }
+        if "metadata" in body:
+            wrapped["metadata"] = body["metadata"]
+        if "ttlSeconds" in body:
+            wrapped["ttlSeconds"] = body["ttlSeconds"]
+
+        resp = await self._client.post("/v1/sessions", json=wrapped)
+        _raise_for_status(resp)
+        info = RealtimeSessionInfo.model_validate(resp.json())
+        return await open_realtime_session(info)

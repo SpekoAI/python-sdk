@@ -49,10 +49,16 @@ class RoutingIntent(_SpekoModel):
     """Routing signal for the Speko router.
 
     - ``language``: BCP-47 tag, e.g. ``"en"`` or ``"es-MX"``.
+    - ``region``: optional region for streaming-provider rankings
+      (e.g. ``"us-east4"``, ``"eu-west1"``). Defaults server-side to
+      ``"global"``, which surfaces region-agnostic (batch) benchmark rows.
+      Set this when latency to a specific geography matters — STT/TTS
+      rankings differ per region.
     - ``optimize_for``: preset that biases the weighted score.
     """
 
     language: str
+    region: Optional[str] = None
     optimize_for: Optional[OptimizeFor] = None
 
 

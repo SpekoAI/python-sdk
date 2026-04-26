@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-04-26
+
+### Added
+
+- `RoutingIntent.region` — optional string forwarded to the gateway as
+  `intent.region`. Set when latency to a specific geography matters
+  (e.g. `"us-east4"`, `"eu-west1"`); STT/TTS rankings differ per
+  region. Omitting it preserves the previous behaviour: the server
+  defaults to `"global"`, which surfaces the region-agnostic (batch)
+  benchmark rows. New keyword arg on `transcribe()` and
+  `synthesize()` (sync + async); also accepted on the `intent`
+  dict / `RoutingIntent` model passed to `complete()`.
+
 ## [0.1.0] - 2026-04-26
 
 ### Removed

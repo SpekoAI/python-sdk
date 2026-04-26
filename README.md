@@ -30,6 +30,7 @@ audio = Path("call.wav").read_bytes()
 result = speko.transcribe(
     audio,
     language="es-MX",
+    region="us-east4",  # optional — rank streaming providers in this region
 )
 print(result.text, result.provider, result.confidence)
 

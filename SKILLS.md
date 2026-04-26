@@ -78,9 +78,10 @@ asyncio.run(main())
 - `AsyncSpeko(api_key=..., base_url=..., timeout=30.0)` — async,
   use as `async with`.
 - Methods (both classes):
-  - `transcribe(audio: bytes, *, language, optimize_for=None,
-     content_type="audio/wav", constraints=None) -> TranscribeResult`
-  - `synthesize(text, *, language, optimize_for=None,
+  - `transcribe(audio: bytes, *, language, region=None,
+     optimize_for=None, content_type="audio/wav", constraints=None)
+     -> TranscribeResult`
+  - `synthesize(text, *, language, region=None, optimize_for=None,
      voice=None, speed=None, constraints=None) -> SynthesizeResult`
   - `complete(*, messages, intent, system_prompt=None, temperature=None,
      max_tokens=None, constraints=None) -> CompleteResult`
@@ -102,6 +103,10 @@ asyncio.run(main())
   (`intent={"language": "en"}`) or a `RoutingIntent` instance. Dicts
   are simpler; the model is handy when you want static typing end to
   end.
+- **`region`** is optional on every entry point. Omit it and the
+  server falls back to `"global"` (region-agnostic / batch ranking).
+  Set e.g. `region="us-east4"` when streaming latency to a specific
+  geography matters — STT/TTS rankings differ per region.
 
 ## Common gotchas
 

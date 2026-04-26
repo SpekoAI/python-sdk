@@ -69,10 +69,12 @@ def _raise_for_status(resp: httpx.Response) -> None:
 
 def _intent_from_fields(
     language: str,
+    region: Optional[str],
     optimize_for: Optional[OptimizeFor],
 ) -> dict[str, Any]:
     return RoutingIntent(
         language=language,
+        region=region,
         optimize_for=optimize_for,
     ).model_dump(by_alias=True, exclude_none=True)
 
@@ -363,6 +365,7 @@ class Speko:
         audio: bytes,
         *,
         language: str,
+        region: Optional[str] = None,
         optimize_for: Optional[OptimizeFor] = None,
         content_type: str = "audio/wav",
         constraints: ConstraintsInput = None,
@@ -370,7 +373,7 @@ class Speko:
         """Transcribe audio. Best STT provider auto-routed.
 
         The router picks the best STT provider for your
-        ``(language, optimize_for)`` and fails over automatically.
+        ``(language, region, optimize_for)`` and fails over automatically.
 
         Example::
 
@@ -379,10 +382,11 @@ class Speko:
             result = speko.transcribe(
                 audio,
                 language="es-MX",
+                region="us-east4",
             )
             print(result.text, result.provider, result.confidence)
         """
-        intent = _intent_from_fields(language, optimize_for)
+        intent = _intent_from_fields(language, region, optimize_for)
         cs = _constraints_payload(constraints)
         headers = _transcribe_headers(
             content_type=content_type, intent=intent, constraints=cs
@@ -398,6 +402,7 @@ class Speko:
         text: str,
         *,
         language: str,
+        region: Optional[str] = None,
         optimize_for: Optional[OptimizeFor] = None,
         voice: Optional[str] = None,
         speed: Optional[float] = None,
@@ -409,7 +414,7 @@ class Speko:
         inspect ``content_type`` (ElevenLabs: ``audio/mpeg``;
         Cartesia: ``audio/pcm;rate=24000``).
         """
-        intent = _intent_from_fields(language, optimize_for)
+        intent = _intent_from_fields(language, region, optimize_for)
         cs = _constraints_payload(constraints)
         body = _synthesize_body(
             text=text, intent=intent, voice=voice, speed=speed, constraints=cs
@@ -495,12 +500,13 @@ class AsyncSpeko:
         audio: bytes,
         *,
         language: str,
+        region: Optional[str] = None,
         optimize_for: Optional[OptimizeFor] = None,
         content_type: str = "audio/wav",
         constraints: ConstraintsInput = None,
     ) -> TranscribeResult:
         """Transcribe audio (async). Best STT provider auto-routed."""
-        intent = _intent_from_fields(language, optimize_for)
+        intent = _intent_from_fields(language, region, optimize_for)
         cs = _constraints_payload(constraints)
         headers = _transcribe_headers(
             content_type=content_type, intent=intent, constraints=cs
@@ -516,13 +522,14 @@ class AsyncSpeko:
         text: str,
         *,
         language: str,
+        region: Optional[str] = None,
         optimize_for: Optional[OptimizeFor] = None,
         voice: Optional[str] = None,
         speed: Optional[float] = None,
         constraints: ConstraintsInput = None,
     ) -> SynthesizeResult:
         """Synthesize text to audio (async). Best TTS provider auto-routed."""
-        intent = _intent_from_fields(language, optimize_for)
+        intent = _intent_from_fields(language, region, optimize_for)
         cs = _constraints_payload(constraints)
         body = _synthesize_body(
             text=text, intent=intent, voice=voice, speed=speed, constraints=cs

@@ -37,16 +37,16 @@ from spekoai import Speko
 speko = Speko(api_key=os.environ["SPEKO_API_KEY"])
 
 audio = Path("call.wav").read_bytes()
-stt = speko.transcribe(audio, language="es-MX", vertical="healthcare")
+stt = speko.transcribe(audio, language="es-MX")
 print(stt.text, stt.provider, stt.confidence)
 
 reply = speko.complete(
     messages=[{"role": "user", "content": "Hi!"}],
-    intent={"language": "en", "vertical": "general"},
+    intent={"language": "en"},
 )
 print(reply.text)
 
-speech = speko.synthesize("Hello world", language="en", vertical="general")
+speech = speko.synthesize("Hello world", language="en")
 ext = "mp3" if "mpeg" in speech.content_type else "pcm"
 Path(f"out.{ext}").write_bytes(speech.audio)
 
@@ -65,7 +65,7 @@ async def main():
     async with AsyncSpeko(api_key=os.environ["SPEKO_API_KEY"]) as speko:
         result = await speko.complete(
             messages=[{"role": "user", "content": "Hi!"}],
-            intent={"language": "en", "vertical": "general"},
+            intent={"language": "en"},
         )
         print(result.text)
 
@@ -78,9 +78,9 @@ asyncio.run(main())
 - `AsyncSpeko(api_key=..., base_url=..., timeout=30.0)` — async,
   use as `async with`.
 - Methods (both classes):
-  - `transcribe(audio: bytes, *, language, vertical, optimize_for=None,
+  - `transcribe(audio: bytes, *, language, optimize_for=None,
      content_type="audio/wav", constraints=None) -> TranscribeResult`
-  - `synthesize(text, *, language, vertical, optimize_for=None,
+  - `synthesize(text, *, language, optimize_for=None,
      voice=None, speed=None, constraints=None) -> SynthesizeResult`
   - `complete(*, messages, intent, system_prompt=None, temperature=None,
      max_tokens=None, constraints=None) -> CompleteResult`
@@ -89,7 +89,7 @@ asyncio.run(main())
 - Models: `RoutingIntent`, `PipelineConstraints`, `AllowedProviders`,
   `ChatMessage`, `TranscribeResult`, `SynthesizeResult`, `CompleteResult`,
   `CompleteUsage`, `UsageSummary`, `UsageByProvider`. Literals:
-  `Vertical`, `OptimizeFor`, `ProviderModality`, `ChatRole`.
+  `OptimizeFor`, `ProviderModality`, `ChatRole`.
 
 ## Concepts
 
@@ -97,11 +97,11 @@ asyncio.run(main())
   snake_case (`result.content_type`, `usage.total_minutes`); the wire is
   camelCase. You don't need to care unless you serialize manually.
 - **Keyword-only args.** Every method uses `*` to force kwargs — this
-  prevents bugs where callers pass `vertical` into `language`.
+  prevents callers from accidentally swapping positional fields.
 - **Two ways to pass intent to `complete()`**: a dict
-  (`intent={"language": "en", "vertical": "general"}`) or a
-  `RoutingIntent` instance. Dicts are simpler; the model is handy when
-  you want static typing end to end.
+  (`intent={"language": "en"}`) or a `RoutingIntent` instance. Dicts
+  are simpler; the model is handy when you want static typing end to
+  end.
 
 ## Common gotchas
 

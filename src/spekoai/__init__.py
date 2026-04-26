@@ -25,7 +25,6 @@ from spekoai.models import (
     TranscribeResult,
     UsageByProvider,
     UsageSummary,
-    Vertical,
 )
 from spekoai.realtime import AsyncRealtimeSession
 
@@ -58,7 +57,6 @@ __all__ = [
     "TranscribeResult",
     "UsageByProvider",
     "UsageSummary",
-    "Vertical",
 ]
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"

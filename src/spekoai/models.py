@@ -11,7 +11,6 @@ from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
-Vertical = Literal["general", "healthcare", "finance", "legal"]
 OptimizeFor = Literal["balanced", "accuracy", "latency", "cost"]
 ProviderModality = Literal["stt", "llm", "tts"]
 ChatRole = Literal["system", "user", "assistant"]
@@ -50,12 +49,10 @@ class RoutingIntent(_SpekoModel):
     """Routing signal for the Speko router.
 
     - ``language``: BCP-47 tag, e.g. ``"en"`` or ``"es-MX"``.
-    - ``vertical``: domain bucket used by the benchmark tables.
     - ``optimize_for``: preset that biases the weighted score.
     """
 
     language: str
-    vertical: Vertical
     optimize_for: Optional[OptimizeFor] = None
 
 

@@ -14,7 +14,7 @@ jobs:
     # workflow (`mirror-sdk-python.yml`). Those commits always start with the
     # prefix below, carry the already-synced subtree, and dispatching on them
     # would burn a no-op sync-from-mirrors run round-trip.
-    if: "!startsWith(github.event.head_commit.message, 'sync: import packages/sdk-python from monorepo @')"
+    if: "!startsWith(github.event.head_commit.message, 'sync: mirror packages/sdk-python')"
     steps:
       - name: Trigger monorepo inbound sync
         env:

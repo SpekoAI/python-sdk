@@ -69,7 +69,7 @@ asyncio.run(main())
 
 ## Documentation
 
-Full API reference and guides: <https://docs.speko.dev/sdk-python>
+Full API reference and guides: <https://docs.speko.dev/sdk-python/overview>
 
 ## Contributing
 

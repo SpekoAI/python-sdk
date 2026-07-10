@@ -67,6 +67,13 @@ dev = [
   "respx>=0.22",
 ]
 
+[tool.uv]
+# Dev/test resolution only (uv.lock): pytest advisory GHSA-6w46-j5rx-g56g is
+# unfixable on Python 3.9 (patched pytest >=9.0.3 requires >=3.10), so the lock
+# would otherwise pin a vulnerable pytest 8.x branch for 3.9. The published
+# package still supports >=3.9 (requires-python above is unchanged).
+environments = ["python_full_version >= '3.10'"]
+
 [tool.uv.build-backend]
 module-name = "spekoai"
 module-root = "src"

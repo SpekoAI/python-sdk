@@ -1056,6 +1056,18 @@ class AgentBackgroundAudio(_SpekoModel):
     tool_sound: Optional[AgentToolCallSound] = None
 
 
+class AgentAudioOutput(_SpekoModel):
+    """Shaping of the agent's own speech, applied before the audio reaches the
+    call (and so before a phone leg), whichever TTS provider spoke.
+
+    ``gain_db`` is a static gain in dB, -24 to 12. Negative values make the
+    agent quieter (-6 roughly halves the amplitude); boost saturates at full
+    scale, so it clips a voice that already peaks near 0 dBFS. 0 is a
+    passthrough. Background audio is not affected."""
+
+    gain_db: float
+
+
 class AgentSpeechNormalization(_SpekoModel):
     pronunciation_dictionary: Optional[dict[str, str]] = None
     text_replacements: Optional[dict[str, str]] = None
@@ -1145,6 +1157,7 @@ class AgentRow(_SpekoModel):
     stack_preferences: Optional[AgentStackPreferences] = None
     stt_options: Optional[AgentSttOptions] = None
     background_audio: Optional[AgentBackgroundAudio] = None
+    audio_output: Optional[AgentAudioOutput] = None
     speech_normalization: Optional[AgentSpeechNormalization] = None
     # Deprecated: use organization-owned speko.webhooks endpoints.
     webhooks: Optional[AgentWebhooksSerialized] = None
@@ -1167,6 +1180,7 @@ class AgentCreateParams(_SpekoModel):
     stack_preferences: Optional[AgentStackPreferences] = None
     stt_options: Optional[AgentSttOptions] = None
     background_audio: Optional[AgentBackgroundAudio] = None
+    audio_output: Optional[AgentAudioOutput] = None
     speech_normalization: Optional[AgentSpeechNormalization] = None
     # Deprecated: use speko.webhooks.create() after creating the agent.
     webhooks: Optional[AgentWebhooksCreate] = None
@@ -1187,6 +1201,7 @@ class AgentUpdateParams(_SpekoModel):
     stack_preferences: Optional[AgentStackPreferences] = None
     stt_options: Optional[AgentSttOptions] = None
     background_audio: Optional[AgentBackgroundAudio] = None
+    audio_output: Optional[AgentAudioOutput] = None
     speech_normalization: Optional[AgentSpeechNormalization] = None
     webhooks: Optional[AgentWebhooksUpdate] = None
     # Post-call extraction schema on the agent itself - no webhook required.

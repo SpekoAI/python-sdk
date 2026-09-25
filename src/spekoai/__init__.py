@@ -10,6 +10,7 @@ from spekoai.errors import SpekoApiError, SpekoAuthError, SpekoRateLimitError
 from spekoai.models import (
     AgentAmbientAudio,
     AgentAmbientClip,
+    AgentAudioOutput,
     AgentBackgroundAudio,
     AgentCallListEntry,
     AgentCallListPage,
@@ -204,6 +205,7 @@ __all__ = [
     "SpekoRateLimitError",
     "AgentAmbientAudio",
     "AgentAmbientClip",
+    "AgentAudioOutput",
     "AgentBackgroundAudio",
     "AgentCallListEntry",
     "AgentCallListPage",

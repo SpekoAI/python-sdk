@@ -13,6 +13,7 @@ from spekoai import (
     TranscribeStreamMeta,
     TranscribeStreamTranscript,
 )
+from spekoai._http import aiter_sse, aiter_sse_with_id, iter_sse, iter_sse_with_id
 from tests.conftest import BASE, sse
 
 TRANSCRIBE_SSE = sse(
@@ -45,7 +46,7 @@ COMPLETE_SSE = sse(
     ),
     ("delta", {"text": "Hel"}),
     ("delta", {"text": "lo"}),
-    ("tool_call", {"id": "call_1", "name": "lookup", "args": "{\"q\":1}"}),
+    ("tool_call", {"id": "call_1", "name": "lookup", "args": '{"q":1}'}),
     (
         "done",
         {
@@ -55,7 +56,7 @@ COMPLETE_SSE = sse(
             "usage": {"promptTokens": 10, "completionTokens": 5},
             "failoverCount": 0,
             "scoresRunId": None,
-            "toolCalls": [{"id": "call_1", "name": "lookup", "args": "{\"q\":1}"}],
+            "toolCalls": [{"id": "call_1", "name": "lookup", "args": '{"q":1}'}],
         },
     ),
 )
@@ -169,9 +170,7 @@ def test_complete_result_includes_tool_calls(speko):
     respx.post(f"{BASE}/v1/complete").respond(
         text=COMPLETE_SSE, headers={"content-type": "text/event-stream"}
     )
-    result = speko.complete(
-        messages=[{"role": "user", "content": "Hi"}], intent={"language": "en"}
-    )
+    result = speko.complete(messages=[{"role": "user", "content": "Hi"}], intent={"language": "en"})
     assert result.text == "Hello"
     assert result.tool_calls[0].id == "call_1"
     assert result.usage.prompt_tokens == 10
@@ -268,3 +267,90 @@ async def test_async_streaming_mirror(aspeko):
         chunks = [chunk async for chunk in stream]
     assert b"".join(chunks) == b"audio"
     assert stream.content_type == "audio/mpeg"
+
+
+def test_iter_sse_splits_crlf_events():
+    # SSE allows CRLF line endings. A CR and its LF can arrive in separate chunks.
+    chunks = ['event: meta\r\ndata: {"a": 1}\r', '\n\r\nevent: done\r\ndata: {"b": 2}\r\n\r\n']
+    assert list(iter_sse(chunks)) == [("meta", {"a": 1}), ("done", {"b": 2})]
+
+
+def test_iter_sse_splits_cr_events():
+    chunks = ["event: meta\rdata: 1\r\r", "event: done\rdata: 2\r\r"]
+    assert list(iter_sse(chunks)) == [("meta", 1), ("done", 2)]
+
+
+def test_iter_sse_with_id_splits_crlf_events():
+    chunks = ["id: 1\r\nevent: a\r\ndata: 1\r\n\r\nid: 2\r\nevent: b\r\ndata: 2\r\n\r\n"]
+    assert list(iter_sse_with_id(chunks)) == [("a", "1", 1), ("b", "2", 2)]
+
+
+async def test_aiter_sse_splits_crlf_events():
+    async def chunks():
+        yield "event: meta\r\ndata: 1\r"
+        yield "\n\r\nevent: done\r\ndata: 2\r\n\r\n"
+
+    assert [item async for item in aiter_sse(chunks())] == [("meta", 1), ("done", 2)]
+
+
+def test_iter_sse_releases_an_event_when_a_chunk_ends_on_a_cr_boundary():
+    # A chunk ending in "\r\r" is a complete event: the last CR may or may not
+    # swallow an LF next, but either way it terminates its line. Waiting for the
+    # next chunk to find out strands the event, and on a stream that has gone
+    # quiet it strands it for good.
+    pulled = []
+
+    def chunks():
+        yield "event: meta\rdata: 1\r\r"
+        pulled.append("second chunk")
+        yield "event: done\rdata: 2\r\r"
+
+    stream = iter_sse(chunks())
+    assert next(stream) == ("meta", 1)
+    assert pulled == []
+    assert next(stream) == ("done", 2)
+
+
+def test_iter_sse_with_id_releases_an_event_on_a_cr_boundary():
+    pulled = []
+
+    def chunks():
+        yield "id: 1\revent: meta\rdata: 1\r\r"
+        pulled.append("second chunk")
+        yield "id: 2\revent: done\rdata: 2\r\r"
+
+    stream = iter_sse_with_id(chunks())
+    assert next(stream) == ("meta", "1", 1)
+    assert pulled == []
+
+
+async def test_aiter_sse_releases_an_event_on_a_cr_boundary():
+    pulled = []
+
+    async def chunks():
+        yield "event: meta\rdata: 1\r\r"
+        pulled.append("second chunk")
+        yield "event: done\rdata: 2\r\r"
+
+    stream = aiter_sse(chunks())
+    assert await stream.__anext__() == ("meta", 1)
+    assert pulled == []
+    assert await stream.__anext__() == ("done", 2)
+    await stream.aclose()
+
+
+async def test_aiter_sse_with_id_releases_an_event_on_a_cr_boundary():
+    async def chunks():
+        yield "id: 7\revent: meta\rdata: 1\r\r"
+
+    assert [item async for item in aiter_sse_with_id(chunks())] == [("meta", "7", 1)]
+
+
+def test_iter_sse_does_not_split_a_crlf_that_spans_two_chunks():
+    # The CR ends the line, the LF that follows it belongs to the same
+    # terminator and must not read as a second one.
+    assert list(iter_sse(["data: one\r", "\ndata: two\r\n\r\n"])) == [("message", "one\ntwo")]
+
+
+def test_iter_sse_keeps_the_pending_cr_across_an_empty_chunk():
+    assert list(iter_sse(["data: one\r", "", "\ndata: two\r\n\r\n"])) == [("message", "one\ntwo")]

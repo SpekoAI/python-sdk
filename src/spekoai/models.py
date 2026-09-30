@@ -1276,6 +1276,30 @@ AgentToolSourceSerialized = Union[
 ]
 
 
+class AgentToolSimulationLive(_SpekoModel):
+    """Run the tool for real in every simulated run, including automated
+    reliability checks."""
+
+    mode: Literal["live"]
+
+
+class AgentToolSimulationMock(_SpekoModel):
+    """Never run the tool in a simulated run, including evals and test calls
+    a user starts. ``response`` is what the model gets back instead (a string
+    as-is, anything else as JSON, at most 8,192 UTF-8 bytes serialized), so a
+    workflow node's output bindings still fill. Omit it for a generic
+    "not executed" result."""
+
+    mode: Literal["mock"]
+    response: Any = None
+
+
+# How a tool behaves in SIMULATED sessions (reliability runs, Test Set evals,
+# test calls; never real calls). None/omitted = the default policy: automated
+# reliability runs mock the tool, user-started evals and test calls run it.
+AgentToolSimulation = Union[AgentToolSimulationLive, AgentToolSimulationMock]
+
+
 class AgentToolRow(_SpekoModel):
     id: str
     agent_id: str
@@ -1287,6 +1311,8 @@ class AgentToolRow(_SpekoModel):
     pre_tool_speech: ChatToolPreToolSpeech = "auto"
     # Per-tool override of the agent's tool-call sound; None = inherit it.
     tool_sound: Optional[AgentToolSoundOverride] = None
+    # Behaviour in simulated (test) runs; None = the default policy.
+    simulation: Optional[AgentToolSimulation] = Field(default=None, discriminator="mode")
     created_at: str
     updated_at: str
 
@@ -1299,6 +1325,8 @@ class AgentToolCreateParams(_SpekoModel):
     # Spoken lead-in behavior before the tool executes. Defaults to `auto`.
     pre_tool_speech: Optional[ChatToolPreToolSpeech] = None
     tool_sound: Optional[AgentToolSoundOverride] = None
+    # Omit for the default policy; see ``AgentToolSimulation``.
+    simulation: Optional[AgentToolSimulation] = Field(default=None, discriminator="mode")
 
 
 class AgentToolUpdateParams(_SpekoModel):
@@ -1309,6 +1337,9 @@ class AgentToolUpdateParams(_SpekoModel):
     # Explicit None is meaningful on update: it clears the override and returns
     # the tool to the agent-wide sound.
     tool_sound: Optional[AgentToolSoundOverride] = None
+    # Explicit None clears the override and returns the tool to the default
+    # simulated-run policy.
+    simulation: Optional[AgentToolSimulation] = Field(default=None, discriminator="mode")
 
 
 class AgentCallListEntry(_SpekoSnakeModel):

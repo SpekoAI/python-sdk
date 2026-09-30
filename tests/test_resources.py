@@ -133,6 +133,78 @@ def test_agent_tools_available_flag_and_chat_tools(speko):
 
 
 @respx.mock
+def test_agent_tool_simulation_round_trips(speko):
+    from spekoai import (
+        AgentToolCreateParams,
+        AgentToolSimulationLive,
+        AgentToolSimulationMock,
+        AgentToolUpdateParams,
+    )
+
+    base_row = {
+        "id": "tool_1",
+        "agentId": "ag_1",
+        "name": "get_next_question",
+        "description": "Fetch the next question",
+        "parameters": {"type": "object"},
+        "source": {"kind": "webhook", "url": "https://x.test/hook", "secretRef": "sr_1"},
+        "preToolSpeech": "auto",
+        "createdAt": "2026-07-01T00:00:00.000Z",
+        "updatedAt": "2026-07-01T00:00:00.000Z",
+    }
+    mock_row = {
+        **base_row,
+        "simulation": {"mode": "mock", "response": {"question_text": "Start date?"}},
+    }
+    create_route = respx.post(f"{BASE}/v1/agents/ag_1/tools").respond(json=mock_row)
+    row = speko.agents.tools.create(
+        "ag_1",
+        AgentToolCreateParams(
+            name="get_next_question",
+            description="Fetch the next question",
+            parameters={"type": "object"},
+            source={"kind": "webhook", "url": "https://x.test/hook", "secret": "whsec_12345678"},
+            simulation=AgentToolSimulationMock(
+                mode="mock", response={"question_text": "Start date?"}
+            ),
+        ),
+    )
+    sent = json.loads(create_route.calls.last.request.content)
+    # The canned response is opaque JSON: its keys are NOT camel-cased.
+    assert sent["simulation"] == {"mode": "mock", "response": {"question_text": "Start date?"}}
+    assert isinstance(row.simulation, AgentToolSimulationMock)
+    assert row.simulation.response == {"question_text": "Start date?"}
+
+    # Mock without a response omits the key; unset rows read back as None.
+    create_route.respond(json=base_row)
+    row = speko.agents.tools.create(
+        "ag_1",
+        {
+            "name": "x",
+            "description": "x",
+            "parameters": {},
+            "source": {"kind": "inline"},
+            "simulation": {"mode": "mock"},
+        },
+    )
+    assert json.loads(create_route.calls.last.request.content)["simulation"] == {"mode": "mock"}
+    assert row.simulation is None
+
+    update_route = respx.patch(f"{BASE}/v1/agents/ag_1/tools/tool_1").respond(
+        json={**base_row, "simulation": {"mode": "live"}}
+    )
+    row = speko.agents.tools.update(
+        "ag_1", "tool_1", AgentToolUpdateParams(simulation=AgentToolSimulationLive(mode="live"))
+    )
+    assert json.loads(update_route.calls.last.request.content) == {"simulation": {"mode": "live"}}
+    assert isinstance(row.simulation, AgentToolSimulationLive)
+
+    # Explicit None clears the override.
+    speko.agents.tools.update("ag_1", "tool_1", {"simulation": None})
+    assert json.loads(update_route.calls.last.request.content) == {"simulation": None}
+
+
+@respx.mock
 def test_calls_snake_case_payloads(speko):
     detail = {
         "id": "sess_1",

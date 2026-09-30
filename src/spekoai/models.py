@@ -1433,6 +1433,20 @@ class ScheduledCallback(_SpekoSnakeModel):
     updated_at: str
 
 
+class CallReportVoicemail(_SpekoSnakeModel):
+    """Machine detection and voicemail handling for a call.
+
+    ``delivery`` is the ``onMachine: leave_message`` result (``delivered``,
+    ``missing_message``, ``greeting_timeout``, ``playout_failed``,
+    ``call_ended`` when the far end hung up while the message played, or
+    ``not_attempted`` when the call ended before the message started).
+    """
+
+    detected: bool
+    amd_verdict: Optional[str] = None
+    delivery: Optional[str] = None
+
+
 class CallReport(_SpekoSnakeModel):
     session_id: str
     organization_id: str
@@ -1446,6 +1460,8 @@ class CallReport(_SpekoSnakeModel):
     artifacts: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
     scheduled_callback: Optional[dict[str, Any]] = None
+    # None on reports finalized before the field existed.
+    voicemail: Optional[CallReportVoicemail] = None
     analysis_status: Literal["heuristic", "completed", "failed"]
     analysis_provider: Optional[str] = None
     analysis_model: Optional[str] = None

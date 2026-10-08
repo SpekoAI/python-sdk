@@ -18,6 +18,9 @@ OptimizeFor = Literal["balanced", "accuracy", "latency", "cost"]
 ProviderModality = Literal["stt", "llm", "tts"]
 ChatRole = Literal["system", "user", "assistant", "tool"]
 KeySource = Literal["BYOK", "MANAGED"]
+# How a usage line bills: the per-minute call rate, an add-on charged on top
+# of it, covered by the minute, absorbed by Speko, or run on the customer's key.
+ChargeKind = Literal["minutes", "add_on", "included", "free", "byok"]
 CreditLedgerKind = Literal["grant", "debit", "topup", "refund", "adjustment"]
 ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh"]
 
@@ -360,9 +363,11 @@ CompleteStreamEvent = Union[
 
 class UsageByProvider(_SpekoModel):
     provider: str
-    type: ProviderModality
+    # Never sent by the API; kept optional so older code reading it still loads.
+    type: ProviderModality | None = None
     metric: str
     key_source: KeySource
+    charge_kind: ChargeKind | None = None
     quantity: float
     cost: float
 
@@ -371,6 +376,11 @@ class UsageSummary(_SpekoModel):
     total_sessions: int
     total_minutes: float
     total_cost: float
+    # Cost of the per-minute call rate, and of everything charged on top of it.
+    minutes_cost: float | None = None
+    # Exact call seconds charged at the per-minute rate.
+    minutes_billed_seconds: float | None = None
+    add_on_cost: float | None = None
     breakdown: list[UsageByProvider]
     balance_usd: float
     currency: Literal["USD"]

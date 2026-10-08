@@ -62,7 +62,7 @@ class PhoneNumbersResource:
         """Search the platform-managed pool for orderable US numbers.
 
         Filter by 3-digit area code and/or locality. Results include cost so
-        you can preview "$1 upfront + $1/month" before committing to
+        you can preview "$1 upfront + $2/month" before committing to
         ``create``.
         """
         resp = self._client.get(

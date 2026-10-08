@@ -452,6 +452,35 @@ def test_voices_and_sessions_transcript(speko):
 
 
 @respx.mock
+def test_usage_summary_parses_the_server_shape(speko):
+    respx.get(f"{BASE}/v1/usage").respond(
+        json={
+            "totalSessions": 2,
+            "totalMinutes": 3,
+            "totalCost": 0.29,
+            "minutesCost": 0.27,
+            "addOnCost": 0.02,
+            "breakdown": [
+                {
+                    "provider": "telnyx",
+                    "metric": "telephony_outbound_seconds",
+                    "keySource": "MANAGED",
+                    "chargeKind": "add_on",
+                    "quantity": 80,
+                    "cost": 0.02,
+                }
+            ],
+            "balanceUsd": 9.71,
+            "currency": "USD",
+        }
+    )
+    usage = speko.usage.get()
+    assert usage.add_on_cost == 0.02
+    assert usage.breakdown[0].charge_kind == "add_on"
+    assert usage.breakdown[0].type is None
+
+
+@respx.mock
 def test_error_mapping(speko):
     respx.get(f"{BASE}/v1/usage").respond(
         status_code=401, json={"error": "bad key", "code": "AUTH_ERROR"}

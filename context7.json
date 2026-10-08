@@ -1,0 +1,13 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "Speko Python SDK",
+  "description": "Official Speko Python SDK (spekoai) - one API for STT, TTS, and V2V across voice AI providers, with routing and automatic failover",
+  "folders": [],
+  "excludeFolders": ["dist", "tests"],
+  "excludeFiles": ["CHANGELOG.md"],
+  "rules": [
+    "Install with pip install spekoai; initialize with Speko(api_key=os.environ[\"SPEKO_API_KEY\"]) or AsyncSpeko for asyncio",
+    "Speko routes each request across multiple voice providers; express constraints (latency, cost, language) instead of hardcoding a single provider",
+    "Full documentation lives at https://docs.speko.dev"
+  ]
+}

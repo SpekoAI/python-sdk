@@ -1,0 +1,103 @@
+[build-system]
+requires = ["uv_build==0.12.19"]
+build-backend = "uv_build"
+
+[project]
+name = "spekoai"
+version = "0.2.2"
+description = "Official Speko Python SDK — one API, every voice provider"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.9"
+authors = [{ name = "SpekoAI" }]
+keywords = [
+  "spekoai",
+  "speko",
+  "voice-ai",
+  "voice-agent",
+  "sdk",
+  "stt",
+  "tts",
+  "speech-to-text",
+  "text-to-speech",
+  "speech-recognition",
+  "llm-routing",
+  "voice-routing",
+  "failover",
+  "fallback",
+  "multilingual",
+  "elevenlabs",
+  "deepgram",
+  "cartesia",
+  "openrouter",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Multimedia :: Sound/Audio :: Speech",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Typing :: Typed",
+]
+# With Python >=3.9, these two branches preserve the Python 3.9 dependency caps.
+# Equality survives uv's metadata normalization, including Python 3.10 prereleases.
+dependencies = [
+  "aiortc>=1.13.0,<1.14.0; python_version == '3.9'",
+  "aiortc>=1.15.0,<2.0.0; python_version != '3.9'",
+  # PyAV 14.3 and 14.4 have no CPython 3.9 wheels.
+  "av>=14.0.0,<14.3.0; python_version == '3.9'",
+  "av>=14.0.0,<18.0.0; python_version != '3.9'",
+  "httpx>=0.27.0",
+  "pydantic>=2.0.0",
+  "websockets>=13.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/SpekoAI/python-sdk"
+Repository = "https://github.com/SpekoAI/python-sdk"
+Issues = "https://github.com/SpekoAI/python-sdk/issues"
+Changelog = "https://github.com/SpekoAI/python-sdk/blob/main/CHANGELOG.md"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.24",
+  "ruff>=0.8",
+  "respx>=0.22",
+]
+
+[tool.uv]
+# Dev/test resolution only (uv.lock): pytest advisory GHSA-6w46-j5rx-g56g is
+# unfixable on Python 3.9 (patched pytest >=9.0.3 requires >=3.10), so the lock
+# would otherwise pin a vulnerable pytest 8.x branch for 3.9. The published
+# package still supports >=3.9 (requires-python above is unchanged).
+environments = ["python_full_version >= '3.10'"]
+
+[tool.uv.build-backend]
+module-name = "spekoai"
+module-root = "src"
+source-include = ["scripts/check_distribution_metadata.py"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP"]
+# UP045/UP007 want `X | None` / `X | Y` instead of `Optional[X]` / `Union[X, Y]`.
+# With target-version = py39 and pydantic evaluating annotations at runtime,
+# PEP 604 union syntax breaks on 3.9, so stay on `typing` unions until we drop
+# 3.9 support.
+ignore = ["UP045", "UP007"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

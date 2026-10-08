@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "spekoai"
-version = "0.2.1"
+version = "0.2.2"
 description = "Official Speko Python SDK — one API, every voice provider"
 readme = "README.md"
 license = "MIT"

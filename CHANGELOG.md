@@ -5,7 +5,18 @@ All notable changes to `spekoai` (Python SDK) will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.1] - Unreleased
+## [0.2.2] - 2026-10-09
+
+### Added
+
+- `UsageSummary.minutes_cost`, `add_on_cost` and `minutes_billed_seconds`, and `UsageByProvider.charge_kind` (`minutes`, `add_on`, `included`, `free` or `byok`), plus the `ChargeKind` type.
+
+### Fixed
+
+- `speko.usage.get()` no longer fails validation: `UsageByProvider.type` was required but never sent by the API, and is now optional.
+- Phone number docs quote the current $2/month price.
+
+## [0.2.1] - 2026-09-12
 
 ### Fixed
 

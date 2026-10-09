@@ -1519,6 +1519,21 @@ class WebJoinResult(_SpekoModel):
     expires_at: str
 
 
+class SendCallMessageParams(_SpekoModel):
+    # The update for the caller, 1-4000 characters.
+    text: str
+    # 'respond' (default): the agent tells the caller at the next gap in the
+    # conversation. 'context': added to the agent's context only.
+    mode: Optional[Literal["respond", "context"]] = None
+
+
+class SendCallMessageResult(_SpekoSnakeModel):
+    ok: Literal[True]
+    status: Literal["sent"]
+    message_id: str
+    mode: Literal["respond", "context"]
+
+
 class EndCallResult(_SpekoSnakeModel):
     ok: Literal[True]
     # 'ending' when teardown was requested; 'already_ended' when the call

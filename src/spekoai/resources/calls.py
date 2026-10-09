@@ -20,6 +20,8 @@ from spekoai.models import (
     EndCallResult,
     FinalizeCallReportParams,
     FinalizeCallReportResult,
+    SendCallMessageParams,
+    SendCallMessageResult,
     WarmTransferParams,
     WebJoinParams,
     WebJoinResult,
@@ -31,6 +33,7 @@ CompleteWarmInput = Union[CompleteWarmTransferParams, dict[str, Any], None]
 CancelWarmInput = Union[CancelWarmTransferParams, dict[str, Any], None]
 FinalizeInput = Union[FinalizeCallReportParams, dict[str, Any], None]
 WebJoinInput = Union[WebJoinParams, dict[str, Any], None]
+SendMessageInput = Union[SendCallMessageParams, dict[str, Any]]
 
 
 class CallsResource:
@@ -87,6 +90,18 @@ class CallsResource:
         resp = self._client.post(f"/v1/calls/{path_id(call_id)}/end", json={})
         raise_for_status(resp)
         return EndCallResult.model_validate(resp.json())
+
+    def send_message(self, call_id: str, params: SendMessageInput) -> SendCallMessageResult:
+        """Push an update from your backend into a live call. In ``respond``
+        mode (default) the agent tells the caller at the next gap in the
+        conversation; in ``context`` mode it only adds the text to the
+        agent's context. A 409 means the call is no longer live."""
+        resp = self._client.post(
+            f"/v1/calls/{path_id(call_id)}/messages",
+            json=dump_params(params, SendCallMessageParams),
+        )
+        raise_for_status(resp)
+        return SendCallMessageResult.model_validate(resp.json())
 
     def blind_transfer(self, call_id: str, params: BlindTransferInput) -> CallTransfer:
         resp = self._client.post(
@@ -169,6 +184,14 @@ class AsyncCallsResource:
         resp = await self._client.post(f"/v1/calls/{path_id(call_id)}/end", json={})
         raise_for_status(resp)
         return EndCallResult.model_validate(resp.json())
+
+    async def send_message(self, call_id: str, params: SendMessageInput) -> SendCallMessageResult:
+        resp = await self._client.post(
+            f"/v1/calls/{path_id(call_id)}/messages",
+            json=dump_params(params, SendCallMessageParams),
+        )
+        raise_for_status(resp)
+        return SendCallMessageResult.model_validate(resp.json())
 
     async def blind_transfer(self, call_id: str, params: BlindTransferInput) -> CallTransfer:
         resp = await self._client.post(

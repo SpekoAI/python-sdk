@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import AsyncIterator, Iterable, Iterator
 from typing import Any, Optional, TypeVar, Union
 from urllib.parse import quote
@@ -84,54 +85,86 @@ def decode_sse_block_with_id(block: str) -> tuple[str, Optional[str], Any]:
     return event, event_id, data
 
 
-def iter_sse(chunks: Iterable[str]) -> Iterator[tuple[str, Any]]:
-    buffer = ""
-    for chunk in chunks:
-        buffer += chunk
-        while "\n\n" in buffer:
-            block, buffer = buffer.split("\n\n", 1)
+# SSE lines may end in CRLF, LF or CR, so normalize every terminator to LF.
+_SSE_NEWLINE = re.compile(r"\r\n?")
+
+
+class _SseBuffer:
+    """Accumulates raw chunks and hands back whole SSE blocks.
+
+    A CR at the very end of a chunk is ambiguous, because the LF of a CRLF
+    pair may still be in flight. It terminates its line either way, so the
+    block is released as soon as the CR lands and the LF is dropped if it
+    turns up at the head of the next chunk. Holding the CR back instead would
+    strand an event whose chunk ends on a ``\r\r`` boundary until more data
+    arrived, which on a stream that has gone quiet means for good.
+    """
+
+    def __init__(self) -> None:
+        self._buffer = ""
+        self._skip_lf = False
+
+    def feed(self, chunk: str) -> list[str]:
+        if not chunk:
+            return []
+        if self._skip_lf:
+            self._skip_lf = False
+            chunk = chunk[1:] if chunk.startswith("\n") else chunk
+        if chunk:
+            self._skip_lf = chunk.endswith("\r")
+            self._buffer += _SSE_NEWLINE.sub("\n", chunk)
+        return self._drain()
+
+    def flush(self) -> list[str]:
+        block, self._buffer = self._buffer, ""
+        self._skip_lf = False
+        return [block] if block.strip() else []
+
+    def _drain(self) -> list[str]:
+        blocks: list[str] = []
+        while "\n\n" in self._buffer:
+            block, self._buffer = self._buffer.split("\n\n", 1)
             if block.strip():
-                yield decode_sse_block(block)
-    if buffer.strip():
-        yield decode_sse_block(buffer)
+                blocks.append(block)
+        return blocks
+
+
+def iter_sse(chunks: Iterable[str]) -> Iterator[tuple[str, Any]]:
+    buffer = _SseBuffer()
+    for chunk in chunks:
+        for block in buffer.feed(chunk):
+            yield decode_sse_block(block)
+    for block in buffer.flush():
+        yield decode_sse_block(block)
 
 
 async def aiter_sse(chunks: AsyncIterator[str]) -> AsyncIterator[tuple[str, Any]]:
-    buffer = ""
+    buffer = _SseBuffer()
     async for chunk in chunks:
-        buffer += chunk
-        while "\n\n" in buffer:
-            block, buffer = buffer.split("\n\n", 1)
-            if block.strip():
-                yield decode_sse_block(block)
-    if buffer.strip():
-        yield decode_sse_block(buffer)
+        for block in buffer.feed(chunk):
+            yield decode_sse_block(block)
+    for block in buffer.flush():
+        yield decode_sse_block(block)
 
 
 def iter_sse_with_id(chunks: Iterable[str]) -> Iterator[tuple[str, Optional[str], Any]]:
-    buffer = ""
+    buffer = _SseBuffer()
     for chunk in chunks:
-        buffer += chunk
-        while "\n\n" in buffer:
-            block, buffer = buffer.split("\n\n", 1)
-            if block.strip():
-                yield decode_sse_block_with_id(block)
-    if buffer.strip():
-        yield decode_sse_block_with_id(buffer)
+        for block in buffer.feed(chunk):
+            yield decode_sse_block_with_id(block)
+    for block in buffer.flush():
+        yield decode_sse_block_with_id(block)
 
 
 async def aiter_sse_with_id(
     chunks: AsyncIterator[str],
 ) -> AsyncIterator[tuple[str, Optional[str], Any]]:
-    buffer = ""
+    buffer = _SseBuffer()
     async for chunk in chunks:
-        buffer += chunk
-        while "\n\n" in buffer:
-            block, buffer = buffer.split("\n\n", 1)
-            if block.strip():
-                yield decode_sse_block_with_id(block)
-    if buffer.strip():
-        yield decode_sse_block_with_id(buffer)
+        for block in buffer.feed(chunk):
+            yield decode_sse_block_with_id(block)
+    for block in buffer.flush():
+        yield decode_sse_block_with_id(block)
 
 
 def dump_params(params: Union[ModelT, dict[str, Any]], model_cls: type[ModelT]) -> dict[str, Any]:

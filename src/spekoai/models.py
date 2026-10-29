@@ -1204,11 +1204,12 @@ class AgentPromptVariable(_SpekoModel):
     description: Optional[str] = None
 
 
-class AgentRow(_SpekoModel):
+class _AgentFields(_SpekoModel):
+    """Fields shared by a full agent read and an agent list entry."""
+
     id: str
     organization_id: str
     name: str
-    system_prompt: str
     voice: Optional[str] = None
     intent: AgentIntent
     llm_options: Optional[AgentLlmOptions] = None
@@ -1219,12 +1220,6 @@ class AgentRow(_SpekoModel):
     speech_normalization: Optional[AgentSpeechNormalization] = None
     # Deprecated: use organization-owned speko.webhooks endpoints.
     webhooks: Optional[AgentWebhooksSerialized] = None
-    # Post-call extraction schema on the agent itself - no webhook required.
-    # Merged with webhooks.postCall.extraction_fields; the agent-level
-    # definition wins on a name collision.
-    extraction_fields: list[AgentExtractionField] = Field(default_factory=list)
-    # Prompt-variable registry. Returned on single-agent reads; None = empty.
-    prompt_variables: Optional[list[AgentPromptVariable]] = None
     # Keys outbound calls press after answer, before the agent's first turn.
     outbound_dtmf: Optional[str] = None
     # Hard cap on each phone call in seconds when the call names none.
@@ -1232,6 +1227,31 @@ class AgentRow(_SpekoModel):
     max_duration_seconds: Optional[int] = None
     created_at: str
     updated_at: str
+
+
+class AgentRow(_AgentFields):
+    """A full agent, as returned by ``agents.get``, ``create`` and ``update``."""
+
+    system_prompt: str
+    # Post-call extraction schema on the agent itself - no webhook required.
+    # Merged with webhooks.postCall.extraction_fields; the agent-level
+    # definition wins on a name collision.
+    extraction_fields: list[AgentExtractionField] = Field(default_factory=list)
+    # Prompt-variable registry. Returned on single-agent reads; None = empty.
+    prompt_variables: Optional[list[AgentPromptVariable]] = None
+
+
+class AgentCreator(_SpekoModel):
+    id: str
+    name: Optional[str] = None
+    email: str
+
+
+class AgentListItem(_AgentFields):
+    """One entry of ``agents.list``. The list omits the system prompt, prompt
+    variables and extraction fields; read them with ``agents.get``."""
+
+    created_by: Optional[AgentCreator] = None
 
 
 class AgentCreateParams(_SpekoModel):

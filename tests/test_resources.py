@@ -18,6 +18,12 @@ AGENT = {
     "updatedAt": "2026-07-01T00:00:00.000Z",
 }
 
+# GET /v1/agents serializes list items: no systemPrompt, promptVariables or
+# extractionFields, plus the creator.
+AGENT_LIST_ITEM = {key: value for key, value in AGENT.items() if key != "systemPrompt"} | {
+    "createdBy": {"id": "user_1", "name": None, "email": "dev@example.com"}
+}
+
 PHONE_NUMBER = {
     "id": "pn_1",
     "organizationId": "org_1",
@@ -42,7 +48,7 @@ PHONE_NUMBER = {
 
 @respx.mock
 def test_agents_crud_paths(speko):
-    respx.get(f"{BASE}/v1/agents").respond(json=[AGENT])
+    respx.get(f"{BASE}/v1/agents").respond(json=[AGENT_LIST_ITEM])
     respx.post(f"{BASE}/v1/agents").respond(json=AGENT)
     respx.get(f"{BASE}/v1/agents/ag_1").respond(json=AGENT)
     respx.patch(f"{BASE}/v1/agents/ag_1").respond(json=AGENT)
@@ -50,6 +56,8 @@ def test_agents_crud_paths(speko):
 
     agents = speko.agents.list()
     assert agents[0].intent.optimize_for == "latency"
+    assert agents[0].created_by is not None
+    assert agents[0].created_by.email == "dev@example.com"
 
     created = speko.agents.create(
         {
@@ -540,7 +548,7 @@ def test_error_mapping(speko):
 
 @respx.mock
 async def test_async_resources_mirror(aspeko):
-    respx.get(f"{BASE}/v1/agents").respond(json=[AGENT])
+    respx.get(f"{BASE}/v1/agents").respond(json=[AGENT_LIST_ITEM])
     agents = await aspeko.agents.list()
     assert agents[0].id == "ag_1"
 

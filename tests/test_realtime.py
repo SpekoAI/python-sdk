@@ -10,7 +10,7 @@ from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosedError
 
 import spekoai.realtime as realtime_module
-from spekoai import AsyncSpeko
+from spekoai import AsyncSpeko, SpekoApiError
 from spekoai._user_agent import USER_AGENT
 from spekoai.client import _realtime_session_body
 from spekoai.models import RealtimeConnectParams, RealtimeSessionInfo
@@ -1084,3 +1084,38 @@ def test_client_shutdown_drains_report_added_after_cancelled_session_close(monke
                 await client.close()
 
     asyncio.run(main())
+
+
+@pytest.mark.parametrize(
+    ("body", "code"),
+    [
+        (
+            {
+                "mode": "s2s",
+                "transport": "livekit",
+                "sessionId": "sess_lk",
+                "provider": "openai",
+                "model": "gpt-live-1",
+                "transportToken": "lk-token",
+                "transportUrl": "wss://livekit.test",
+                "expiresAt": "2026-10-29T14:04:42.073Z",
+            },
+            "REALTIME_LIVEKIT_HOSTED",
+        ),
+        ({"mode": "s2s", "transport": "carrier_pigeon"}, "REALTIME_UNSUPPORTED_TRANSPORT"),
+    ],
+)
+async def test_connect_realtime_rejects_non_provider_direct_sessions(monkeypatch, body, code):
+    opened = AsyncMock()
+    monkeypatch.setattr("spekoai.client.open_realtime_session", opened)
+    async with AsyncSpeko(api_key="sk-test", base_url="https://api.test") as client:
+        with respx.mock(assert_all_called=True) as router:
+            router.post("https://api.test/v1/sessions").respond(status_code=201, json=body)
+            with pytest.raises(SpekoApiError) as exc:
+                await client.connect_realtime({"provider": "openai", "model": "gpt-realtime-2.1"})
+    assert exc.value.code == code
+    assert exc.value.status == 201
+    if code == "REALTIME_LIVEKIT_HOSTED":
+        assert "openai:gpt-realtime-2.1" in exc.value.message
+        assert "openai:gpt-live-1" in exc.value.message
+    opened.assert_not_awaited()

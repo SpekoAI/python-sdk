@@ -320,6 +320,33 @@ def _realtime_session_body(params: RealtimeInput) -> dict[str, Any]:
     return wrapped
 
 
+def _realtime_session_info(
+    resp: httpx.Response, requested: RealtimeConnectParams
+) -> RealtimeSessionInfo:
+    data = resp.json()
+    transport = data.get("transport") if isinstance(data, dict) else None
+    if transport == "livekit":
+        # The server runs some S2S sessions on its LiveKit worker (GPT-Live,
+        # and under its S2S policy also agent and Router sessions and the
+        # OpenAI/Google pins it swaps for GPT-Live) and returns a room token
+        # instead of a provider credential. This client cannot join a room.
+        resolved = f"{data.get('provider')}:{data.get('model')}"
+        raise SpekoApiError(
+            f"Requested {requested.provider}:{requested.model}; the server resolved it to "
+            f"{resolved}, which is hosted on LiveKit. connect_realtime only supports "
+            "provider-direct models, such as xai:grok-voice-latest.",
+            resp.status_code,
+            "REALTIME_LIVEKIT_HOSTED",
+        )
+    if transport != "provider_direct":
+        raise SpekoApiError(
+            f"Unsupported realtime session transport: {transport!r}",
+            resp.status_code,
+            "REALTIME_UNSUPPORTED_TRANSPORT",
+        )
+    return RealtimeSessionInfo.model_validate(data)
+
+
 class SynthesizeStream:
     """Streamed synthesize response: metadata now, audio chunks as they
     arrive. Iterate for chunks; the underlying connection closes when the
@@ -1025,12 +1052,14 @@ class AsyncSpeko:
         Posts ``/v1/sessions`` with ``mode='s2s'`` to mint a short-lived
         provider credential, then opens the provider transport directly.
         Speko remains on the setup and billing paths only; audio does not
-        traverse a Speko proxy.
+        traverse a Speko proxy. Raises ``SpekoApiError`` with code
+        ``REALTIME_LIVEKIT_HOSTED`` when the server hosts the resolved model
+        on LiveKit instead.
 
         Example::
 
             session = await speko.connect_realtime(
-                RealtimeConnectParams(provider="openai", model="gpt-realtime"),
+                RealtimeConnectParams(provider="xai", model="grok-voice-latest"),
             )
             async with session:
                 await session.send_audio(pcm_chunk)
@@ -1048,5 +1077,5 @@ class AsyncSpeko:
             headers={"Idempotency-Key": model.idempotency_key or str(uuid4())},
         )
         raise_for_status(resp)
-        info = RealtimeSessionInfo.model_validate(resp.json())
+        info = _realtime_session_info(resp, model)
         return await open_realtime_session(info, _pending_tasks=self._realtime_tasks)

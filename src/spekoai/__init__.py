@@ -15,11 +15,13 @@ from spekoai.models import (
     AgentCallListEntry,
     AgentCallListPage,
     AgentCreateParams,
+    AgentCreator,
     AgentExtractionField,
     AgentIntent,
     AgentLifecycleWebhookCreate,
     AgentLifecycleWebhookSerialized,
     AgentLifecycleWebhookUpdate,
+    AgentListItem,
     AgentLlmOptions,
     AgentPromptVariable,
     AgentRow,
@@ -218,11 +220,13 @@ __all__ = [
     "AgentCallListEntry",
     "AgentCallListPage",
     "AgentCreateParams",
+    "AgentCreator",
     "AgentExtractionField",
     "AgentIntent",
     "AgentLifecycleWebhookCreate",
     "AgentLifecycleWebhookSerialized",
     "AgentLifecycleWebhookUpdate",
+    "AgentListItem",
     "AgentLlmOptions",
     "AgentPromptVariable",
     "AgentRow",
@@ -404,4 +408,4 @@ __all__ = [
     "WorkspaceWebhookEventType",
 ]
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"

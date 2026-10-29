@@ -5,6 +5,17 @@ All notable changes to `spekoai` (Python SDK) will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-10-29
+
+### Added
+
+- `AgentListItem` and `AgentCreator`. `agents.list()` now returns `AgentListItem`, which matches the list response: no `system_prompt`, `prompt_variables` or `extraction_fields`, plus `created_by`. Read those fields with `agents.get()`.
+
+### Fixed
+
+- `agents.list()` no longer fails validation. The API leaves `systemPrompt` out of list entries, and the SDK required it, so the call failed for every organization with at least one agent.
+- `connect_realtime()` raises `SpekoApiError` with code `REALTIME_LIVEKIT_HOSTED` when the server hosts the resolved model on LiveKit (for example GPT-Live), instead of a pydantic `ValidationError`. The message names the requested and the resolved model. Other transports raise `REALTIME_UNSUPPORTED_TRANSPORT`.
+
 ## [0.2.2] - 2026-10-09
 
 ### Added

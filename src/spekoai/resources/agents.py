@@ -16,6 +16,7 @@ from spekoai._http import dump_params, path_id, query_string, raise_for_status
 from spekoai.models import (
     AgentCallListPage,
     AgentCreateParams,
+    AgentListItem,
     AgentRow,
     AgentToolCreateParams,
     AgentToolRow,
@@ -54,10 +55,10 @@ class AgentsResource:
         self._client = client
         self.tools = AgentToolsResource(client)
 
-    def list(self) -> list[AgentRow]:
+    def list(self) -> list[AgentListItem]:
         resp = self._client.get("/v1/agents")
         raise_for_status(resp)
-        return [AgentRow.model_validate(row) for row in resp.json()]
+        return [AgentListItem.model_validate(row) for row in resp.json()]
 
     def create(self, params: AgentCreateInput) -> AgentRow:
         """Create an agent.
@@ -199,10 +200,10 @@ class AsyncAgentsResource:
         self._client = client
         self.tools = AsyncAgentToolsResource(client)
 
-    async def list(self) -> list[AgentRow]:
+    async def list(self) -> list[AgentListItem]:
         resp = await self._client.get("/v1/agents")
         raise_for_status(resp)
-        return [AgentRow.model_validate(row) for row in resp.json()]
+        return [AgentListItem.model_validate(row) for row in resp.json()]
 
     async def create(self, params: AgentCreateInput) -> AgentRow:
         resp = await self._client.post("/v1/agents", json=dump_params(params, AgentCreateParams))

@@ -187,3 +187,41 @@ def test_sms_agent_inbox_writes_carry_the_expected_agent(speko):
         "expected_agent_id": "agent_a",
     }
     assert (refused.value.status, refused.value.code) == (409, "SMS_THREAD_AGENT_CHANGED")
+
+
+SMS_STREAM_BODY = (
+    "event: heartbeat\ndata: {}\n\n"
+    "id: evt_1\nevent: message.status\n"
+    'data: {"message_id": "message_1", "conversation_id": "conversation_1",'
+    ' "status": "delivered", "occurred_at": "2026-09-01T12:00:05.000Z"}\n\n'
+)
+
+
+@respx.mock
+def test_sms_stream_yields_typed_events(speko):
+    route = respx.get(f"{BASE}/v1/sms/stream").respond(
+        headers={"content-type": "text/event-stream"}, text=SMS_STREAM_BODY
+    )
+
+    events = list(speko.sms.stream(last_event_id="evt_0"))
+
+    assert len(events) == 1
+    assert events[0].event == "message.status"
+    assert events[0].id == "evt_1"
+    assert events[0].message_id == "message_1"
+    assert events[0].status == "delivered"
+    assert route.calls.last.request.headers["Last-Event-ID"] == "evt_0"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_sms_stream_yields_typed_events(aspeko):
+    respx.get(f"{BASE}/v1/sms/stream").respond(
+        headers={"content-type": "text/event-stream"}, text=SMS_STREAM_BODY
+    )
+
+    events = [event async for event in aspeko.sms.stream()]
+
+    assert [(e.event, e.id, e.message_id) for e in events] == [
+        ("message.status", "evt_1", "message_1")
+    ]

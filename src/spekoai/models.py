@@ -782,6 +782,9 @@ class PhoneNumberRow(_SpekoModel):
     caller_name_updated_at: Optional[str] = None
     # Whether a caller name can be set: US local numbers bought through Speko.
     caller_name_supported: bool = False
+    # What a caller hears when this number takes a voicemail; None when the
+    # number uses the workspace's greeting, or the built-in one.
+    voicemail_greeting: Optional[str] = None
     sms10dlc_profile_id: Optional[str] = Field(default=None, alias="sms10dlcProfileId")
     sms_campaign_id: Optional[str] = None
     sms_assignment_status: Optional[PhoneNumberSmsAssignmentStatus] = None
@@ -844,6 +847,10 @@ class PhoneNumberUpdateParams(_SpekoModel):
     # through Speko: letters, digits and spaces, at most 15 characters. Pass
     # None explicitly (or "") to remove it.
     caller_name: Optional[str] = None
+    # What a caller hears when this number takes a voicemail, at most 500
+    # characters once spaces and line breaks are collapsed. Pass None
+    # explicitly (or "") to remove it and use the workspace's greeting.
+    voicemail_greeting: Optional[str] = None
 
 
 class AvailablePhoneNumberRegion(_SpekoModel):

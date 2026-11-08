@@ -7,7 +7,7 @@ The client mirrors the TypeScript SDK's surface:
 - ``Speko.complete(messages=..., intent=...)`` / ``complete_stream``
 - Resource namespaces: ``usage``, ``credits``, ``voice``, ``voices``,
   ``sessions``, ``phone_numbers``, ``agents``, ``knowledge_bases``,
-  ``calls``, ``callbacks``, ``webhooks``, ``sms``.
+  ``calls``, ``callbacks``, ``webhooks``, ``sms``, ``translation``.
 """
 
 from __future__ import annotations
@@ -65,6 +65,7 @@ from spekoai.resources import (
     AsyncPhoneNumbersResource,
     AsyncSessionsResource,
     AsyncSmsResource,
+    AsyncTranslationResource,
     AsyncUsageResource,
     AsyncVoiceResource,
     AsyncVoicesResource,
@@ -76,11 +77,13 @@ from spekoai.resources import (
     PhoneNumbersResource,
     SessionsResource,
     SmsResource,
+    TranslationResource,
     UsageResource,
     VoiceResource,
     VoicesResource,
     WebhooksResource,
 )
+from spekoai.resources.translation import DEFAULT_TRANSLATION_BASE_URL
 
 DEFAULT_BASE_URL = "https://api.speko.dev"
 DEFAULT_TIMEOUT = 30.0
@@ -443,6 +446,7 @@ class Speko:
     callbacks: CallbacksResource
     webhooks: WebhooksResource
     sms: SmsResource
+    translation: TranslationResource
 
     def __init__(
         self,
@@ -450,6 +454,7 @@ class Speko:
         api_key: str,
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = DEFAULT_TIMEOUT,
+        translation_base_url: str = DEFAULT_TRANSLATION_BASE_URL,
     ) -> None:
         if not api_key:
             raise ValueError(
@@ -472,6 +477,7 @@ class Speko:
         self.callbacks = CallbacksResource(self._client)
         self.webhooks = WebhooksResource(self._client)
         self.sms = SmsResource(self._client)
+        self.translation = TranslationResource(self._client, translation_base_url)
 
     def close(self) -> None:
         self._client.close()
@@ -774,6 +780,7 @@ class AsyncSpeko:
     callbacks: AsyncCallbacksResource
     webhooks: AsyncWebhooksResource
     sms: AsyncSmsResource
+    translation: AsyncTranslationResource
 
     def __init__(
         self,
@@ -781,6 +788,7 @@ class AsyncSpeko:
         api_key: str,
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = DEFAULT_TIMEOUT,
+        translation_base_url: str = DEFAULT_TRANSLATION_BASE_URL,
     ) -> None:
         if not api_key:
             raise ValueError(
@@ -804,6 +812,7 @@ class AsyncSpeko:
         self.callbacks = AsyncCallbacksResource(self._client)
         self.webhooks = AsyncWebhooksResource(self._client)
         self.sms = AsyncSmsResource(self._client)
+        self.translation = AsyncTranslationResource(self._client, translation_base_url)
 
     async def close(self, *, realtime_timeout: float = 5.0) -> None:
         """Close HTTP resources after a bounded realtime cleanup/report drain.

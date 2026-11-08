@@ -1,0 +1,266 @@
+{
+ "error_audio_timeout": {
+  "error": {
+   "type": "invalid_request_error",
+   "code": "audio_timeout",
+   "message": "No audio received for 5 seconds. Send audio continuously, silence included.",
+   "doc_url": "https://docs.speko.dev/translation/errors#audio_timeout",
+   "request_id": "req_9QbT2mWx4LkR8vNc"
+  }
+ },
+ "error_balance_exhausted": {
+  "error": {
+   "type": "balance_error",
+   "code": "balance_exhausted",
+   "message": "Your organization's balance ran out. Add credit to continue.",
+   "doc_url": "https://docs.speko.dev/translation/errors#balance_exhausted",
+   "request_id": "req_9QbT2mWx4LkR8vNc"
+  }
+ },
+ "error_client_secret_invalid": {
+  "error": {
+   "type": "authentication_error",
+   "code": "client_secret_invalid",
+   "message": "This client secret is unknown, was already used or has expired. Create a new session.",
+   "doc_url": "https://docs.speko.dev/translation/errors#client_secret_invalid",
+   "request_id": "req_9QbT2mWx4LkR8vNc"
+  }
+ },
+ "error_client_too_slow": {
+  "error": {
+   "type": "invalid_request_error",
+   "code": "client_too_slow",
+   "message": "The app left 5 seconds of translated audio unread. Read output as it arrives.",
+   "doc_url": "https://docs.speko.dev/translation/errors#client_too_slow",
+   "request_id": "req_9QbT2mWx4LkR8vNc"
+  }
+ },
+ "error_frame_invalid": {
+  "error": {
+   "type": "invalid_request_error",
+   "code": "frame_invalid",
+   "message": "Expected audio frame 1500, received frame 1502.",
+   "doc_url": "https://docs.speko.dev/translation/errors#frame_invalid",
+   "request_id": "req_9QbT2mWx4LkR8vNc"
+  }
+ },
+ "error_idempotency_key_in_use": {
+  "error": {
+   "type": "invalid_request_error",
+   "code": "idempotency_key_in_use",
+   "message": "Another request with this Idempotency-Key is still running. Retry shortly.",
+   "param": "Idempotency-Key",
+   "doc_url": "https://docs.speko.dev/translation/errors#idempotency_key_in_use",
+   "request_id": "req_3fLw9KpQ2xVm7RtB"
+  }
+ },
+ "error_idempotency_key_reused": {
+  "error": {
+   "type": "invalid_request_error",
+   "code": "idempotency_key_reused",
+   "message": "This Idempotency-Key was used on a different path or with a different request body.",
+   "param": "Idempotency-Key",
+   "doc_url": "https://docs.speko.dev/translation/errors#idempotency_key_reused",
+   "request_id": "req_3fLw9KpQ2xVm7RtB"
+  }
+ },
+ "error_internal": {
+  "error": {
+   "type": "api_error",
+   "code": "internal",
+   "message": "Something went wrong on our side. Retry the request.",
+   "doc_url": "https://docs.speko.dev/translation/errors#internal",
+   "request_id": "req_3fLw9KpQ2xVm7RtB"
+  }
+ },
+ "error_key_invalid": {
+  "error": {
+   "type": "authentication_error",
+   "code": "key_invalid",
+   "message": "Invalid API key.",
+   "doc_url": "https://docs.speko.dev/translation/errors#key_invalid",
+   "request_id": "req_3fLw9KpQ2xVm7RtB"
+  }
+ },
+ "error_message_invalid": {
+  "error": {
+   "type": "invalid_request_error",
+   "code": "message_invalid",
+   "message": "Expected a JSON control message with a known type.",
+   "doc_url": "https://docs.speko.dev/translation/errors#message_invalid",
+   "request_id": "req_9QbT2mWx4LkR8vNc"
+  }
+ },
+ "error_org_concurrency_limit": {
+  "error": {
+   "type": "rate_limit_error",
+   "code": "org_concurrency_limit",
+   "message": "Your organization is running as many realtime sessions on Speko as it may (10). The count includes all of its realtime traffic, not only translation. Retry when one ends.",
+   "doc_url": "https://docs.speko.dev/translation/errors#org_concurrency_limit",
+   "request_id": "req_9QbT2mWx4LkR8vNc"
+  }
+ },
+ "error_parameter_invalid": {
+  "error": {
+   "type": "invalid_request_error",
+   "code": "parameter_invalid",
+   "message": "Missing header 'Speko-Version'. Send 'Speko-Version: 2026-11-08'.",
+   "param": "Speko-Version",
+   "doc_url": "https://docs.speko.dev/translation/errors#parameter_invalid",
+   "request_id": "req_3fLw9KpQ2xVm7RtB"
+  }
+ },
+ "error_permission_denied": {
+  "error": {
+   "type": "permission_error",
+   "code": "permission_denied",
+   "message": "This API key doesn't have the speko:execute permission. Create a key that does at https://platform.speko.ai/agents/keys.",
+   "doc_url": "https://docs.speko.dev/translation/errors#permission_denied",
+   "request_id": "req_3fLw9KpQ2xVm7RtB"
+  }
+ },
+ "error_resource_missing": {
+  "error": {
+   "type": "invalid_request_error",
+   "code": "resource_missing",
+   "message": "No translation session 'trs_7Kp2mXq9RvT4wLzN8bYc'.",
+   "param": "id",
+   "doc_url": "https://docs.speko.dev/translation/errors#resource_missing",
+   "request_id": "req_3fLw9KpQ2xVm7RtB"
+  }
+ },
+ "error_resume_token_invalid": {
+  "error": {
+   "type": "authentication_error",
+   "code": "resume_token_invalid",
+   "message": "This resume token is unknown, was already used or has expired. The session may already have ended; check it with GET.",
+   "doc_url": "https://docs.speko.dev/translation/errors#resume_token_invalid",
+   "request_id": "req_9QbT2mWx4LkR8vNc"
+  }
+ },
+ "error_runtime_timeout": {
+  "error": {
+   "type": "invalid_request_error",
+   "code": "runtime_timeout",
+   "message": "This session reached the 4-hour limit on session length. Create a new session to continue.",
+   "doc_url": "https://docs.speko.dev/translation/errors#runtime_timeout",
+   "request_id": "req_9QbT2mWx4LkR8vNc"
+  }
+ },
+ "error_service_unavailable": {
+  "error": {
+   "type": "api_error",
+   "code": "service_unavailable",
+   "message": "Speko can't serve this request right now. Retry shortly.",
+   "doc_url": "https://docs.speko.dev/translation/errors#service_unavailable",
+   "request_id": "req_3fLw9KpQ2xVm7RtB"
+  }
+ },
+ "error_translation_failed": {
+  "error": {
+   "type": "api_error",
+   "code": "translation_failed",
+   "message": "Translation failed and could not recover. Create a new session.",
+   "doc_url": "https://docs.speko.dev/translation/errors#translation_failed",
+   "request_id": "req_9QbT2mWx4LkR8vNc"
+  }
+ },
+ "error_unsupported_language": {
+  "error": {
+   "type": "invalid_request_error",
+   "code": "unsupported_language",
+   "message": "Translation into 'xx' is not supported.",
+   "param": "target_language",
+   "doc_url": "https://docs.speko.dev/translation/errors#unsupported_language",
+   "request_id": "req_3fLw9KpQ2xVm7RtB"
+  }
+ },
+ "event_discontinuity": {
+  "type": "discontinuity",
+  "first_sequence": 1200,
+  "last_sequence": 1349
+ },
+ "event_ended": {
+  "type": "ended",
+  "reason": "finished",
+  "usage": {
+   "input_audio_ms": 61240,
+   "output_audio_ms": 48960
+  }
+ },
+ "event_error": {
+  "type": "error",
+  "error": {
+   "type": "balance_error",
+   "code": "balance_exhausted",
+   "message": "Your organization's balance ran out. Add credit to continue.",
+   "doc_url": "https://docs.speko.dev/translation/errors#balance_exhausted",
+   "request_id": "req_9QbT2mWx4LkR8vNc"
+  }
+ },
+ "event_lag": {
+  "type": "lag",
+  "input_buffered_ms": 40,
+  "output_buffered_ms": 0
+ },
+ "event_pong": {
+  "type": "pong",
+  "id": "ping_1"
+ },
+ "event_ready": {
+  "type": "ready"
+ },
+ "event_reconnect": {
+  "type": "reconnect",
+  "resume_token": "trs_7Kp2mXq9RvT4wLzN8bYc_resume_Hx5cW2nR8mK4tP7vZq1j",
+  "next_sequence": 1500
+ },
+ "event_transcript_source": {
+  "type": "transcript.source",
+  "item_id": "item_4Tn8Wq2Lp",
+  "text": "Good morning, everyone.",
+  "final": true
+ },
+ "event_transcript_translated": {
+  "type": "transcript.translated",
+  "item_id": "item_4Tn8Wq2Lp",
+  "text": "Доброе утро всем.",
+  "final": true
+ },
+ "translation_session": {
+  "id": "trs_7Kp2mXq9RvT4wLzN8bYc",
+  "object": "translation_session",
+  "status": "pending",
+  "source_language": "auto",
+  "target_language": "ru",
+  "test": false,
+  "created": 1794150000,
+  "expires_at": 1794150060,
+  "ended_at": null,
+  "end_reason": null,
+  "stream_url": "wss://translate.speko.dev/v1/translation/sessions/trs_7Kp2mXq9RvT4wLzN8bYc/stream",
+  "client_secret": "trs_7Kp2mXq9RvT4wLzN8bYc_secret_Qm4vB8nX2kR7pT9wLs3d",
+  "usage": {
+   "input_audio_ms": 0,
+   "output_audio_ms": 0
+  }
+ },
+ "translation_session_ended": {
+  "id": "trs_7Kp2mXq9RvT4wLzN8bYc",
+  "object": "translation_session",
+  "status": "ended",
+  "source_language": "auto",
+  "target_language": "ru",
+  "test": false,
+  "created": 1794150000,
+  "expires_at": 1794150060,
+  "ended_at": 1794150068,
+  "end_reason": "finished",
+  "stream_url": "wss://translate.speko.dev/v1/translation/sessions/trs_7Kp2mXq9RvT4wLzN8bYc/stream",
+  "client_secret": null,
+  "usage": {
+   "input_audio_ms": 61240,
+   "output_audio_ms": 48960
+  }
+ }
+}

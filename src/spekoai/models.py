@@ -534,6 +534,133 @@ class RealtimeSessionInfo(_SpekoModel):
     expires_at: str
 
 
+# --- Translation ---------------------------------------------------------------
+
+
+class TranslationUsage(_SpekoSnakeModel):
+    input_audio_ms: int
+    output_audio_ms: int
+
+
+class TranslationSession(_SpekoSnakeModel):
+    """A live translation session. ``client_secret`` is set only on create, and on
+    a replay of create while the session is pending."""
+
+    id: str
+    object: Literal["translation_session"]
+    status: Literal["pending", "active", "ended"]
+    source_language: str
+    target_language: str
+    test: bool
+    created: int
+    expires_at: int
+    ended_at: Optional[int] = None
+    end_reason: Optional[str] = None
+    stream_url: str
+    client_secret: Optional[str] = Field(default=None, repr=False)
+    usage: TranslationUsage
+
+
+class TranslationAudio(_SpekoSnakeModel):
+    """One received frame: 20 ms of 24 kHz mono 16-bit little-endian PCM.
+
+    ``sequence`` restarts at 0 on each connection. Play frames in arrival order."""
+
+    type: Literal["audio"] = "audio"
+    pcm: bytes = Field(repr=False)
+    sequence: int
+    sample_offset: int
+
+
+class TranslationReady(_SpekoSnakeModel):
+    type: Literal["ready"] = "ready"
+
+
+class TranslationTranscriptSource(_SpekoSnakeModel):
+    """Text of what was said. ``text`` replaces the earlier text of this ``item_id``."""
+
+    type: Literal["transcript.source"] = "transcript.source"
+    item_id: str
+    text: str
+    final: bool
+
+
+class TranslationTranscriptTranslated(_SpekoSnakeModel):
+    """Text of the translation. ``text`` replaces the earlier text of this ``item_id``."""
+
+    type: Literal["transcript.translated"] = "transcript.translated"
+    item_id: str
+    text: str
+    final: bool
+
+
+class TranslationLag(_SpekoSnakeModel):
+    type: Literal["lag"] = "lag"
+    input_buffered_ms: int
+    output_buffered_ms: int
+
+
+class TranslationDiscontinuity(_SpekoSnakeModel):
+    """Input frames ``first_sequence`` to ``last_sequence`` (inclusive) may be missing
+    from the translation."""
+
+    type: Literal["discontinuity"] = "discontinuity"
+    first_sequence: int
+    last_sequence: int
+
+
+class TranslationReconnect(_SpekoSnakeModel):
+    """Speko is moving the session to a new connection. The stream helper does the
+    move; this event is only for your information."""
+
+    type: Literal["reconnect"] = "reconnect"
+    resume_token: str = Field(repr=False)
+    next_sequence: int
+
+
+class TranslationPong(_SpekoSnakeModel):
+    type: Literal["pong"] = "pong"
+    id: Optional[str] = None
+
+
+class TranslationErrorDetail(_SpekoSnakeModel):
+    """Branch on ``type``. New codes can appear within an API version."""
+
+    type: str
+    code: str
+    message: str
+    param: Optional[str] = None
+    doc_url: str
+    request_id: str
+
+
+class TranslationErrorEvent(_SpekoSnakeModel):
+    type: Literal["error"] = "error"
+    error: TranslationErrorDetail
+
+
+class TranslationEnded(_SpekoSnakeModel):
+    """The session is over. ``reason`` is the error code when an error ended it."""
+
+    type: Literal["ended"] = "ended"
+    reason: str
+    usage: TranslationUsage
+
+
+TranslationStreamEvent = Union[
+    TranslationAudio,
+    TranslationReady,
+    TranslationTranscriptSource,
+    TranslationTranscriptTranslated,
+    TranslationLag,
+    TranslationDiscontinuity,
+    TranslationReconnect,
+    TranslationPong,
+    TranslationErrorEvent,
+    TranslationEnded,
+]
+
+
 # --- Voice (phone dial) -------------------------------------------------------
 
 

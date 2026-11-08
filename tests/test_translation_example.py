@@ -3,6 +3,7 @@
 import asyncio
 import math
 import os
+import runpy
 import struct
 import sys
 import wave
@@ -75,6 +76,17 @@ async def test_a_stereo_16_khz_file_becomes_a_24_khz_mono_file_and_a_transcript(
         "Good morning, everyone.\nДоброе утро всем.\n\n"
         "Let's start the meeting.\nДавайте начнём встречу.\n"
     )
+
+
+def test_a_phrase_without_source_text_writes_only_its_translation(tmp_path):
+    write_transcript = runpy.run_path(str(EXAMPLE))["write_transcript"]
+    path = tmp_path / "out.txt"
+
+    write_transcript(
+        str(path), {"a": {"source": "Hi.", "translated": "Привет."}, "b": {"translated": "Да."}}
+    )
+
+    assert path.read_text(encoding="utf-8") == "Hi.\nПривет.\n\nДа.\n"
 
 
 async def test_a_session_that_fails_exits_non_zero_and_keeps_what_arrived(tmp_path):

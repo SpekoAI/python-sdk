@@ -21,7 +21,7 @@ from spekoai import (
 )
 from spekoai.resources import translation as translation_module
 
-from .translation_mock import MockTranslationServer
+from .translation_mock import TEST_MODE_HELD_FRAMES, MockTranslationServer
 
 FRAME_PCM = 960
 SILENCE = bytes(FRAME_PCM)
@@ -184,6 +184,22 @@ async def test_audio_queued_at_once_goes_out_in_real_time():
             await collect(stream)
 
 
+async def test_a_file_sent_at_once_stays_within_what_test_mode_holds():
+    # The spec's 1.5 s echo and 1.7 s hold, with a move halfway through whose lost time
+    # the helper catches up on. Sending ahead of real time would fail the session.
+    async with running(
+        echo_delay=1.5, max_held_frames=TEST_MODE_HELD_FRAMES, reconnect_after_frames=100
+    ) as (_, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            await stream.send(tagged_audio(150))
+            await stream.finish()
+            events = await collect(stream)
+
+        assert events[-1].reason == "finished"
+        assert audio_pcm(events) == [tagged_frame(index) for index in range(150)]
+
+
 async def test_silence_keeps_a_quiet_session_alive():
     async with running(audio_gap=0.3) as (server, client):
         session = await new_session(client)
@@ -314,6 +330,30 @@ async def test_it_yields_audio_captions_lag_and_the_rest_in_order():
         assert ended.usage.input_audio_ms == 2400
         assert ended.usage.output_audio_ms == 2400
         assert await close_code(server.session().connections[0]) == 1000
+
+
+async def test_an_item_without_source_text_comes_through():
+    async with running(frames_per_item=4) as (_, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            await stream.send(tagged_audio(20))
+            await stream.finish()
+            events = await collect(stream)
+
+        translated = {event.item_id for event in of_type(events, "transcript.translated")}
+        source = {event.item_id for event in of_type(events, "transcript.source")}
+        assert translated == {f"item_test_{number}" for number in range(1, 6)}
+        assert source == {f"item_test_{number}" for number in range(1, 5)}
+
+
+async def test_error_targets_are_case_insensitive_and_keep_the_case_sent():
+    async with running(trigger_delay=0.2) as (_, client):
+        session = await new_session(client, target_language="X-Error-Internal")
+        async with client.translation.connect(session.client_secret) as stream:
+            events = await collect(stream)
+
+        assert session.target_language == "X-Error-Internal"
+        assert events[-1].reason == "internal"
 
 
 async def test_ping_gets_a_pong():

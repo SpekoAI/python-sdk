@@ -1,8 +1,9 @@
 """A small Translation API v1 server for tests, written from the spec (2026-11-08).
 
-It behaves like a test session in the spec's "Test mode" section: it echoes each
-frame back after a delay, sends the scripted transcripts, and asks for a reconnect
-on a schedule. It checks what clients send as strictly as the spec says Speko does.
+It behaves like a test session in the spec's "Test mode" section and docs/test-mode.md:
+it echoes each frame back after a delay, sends the scripted transcripts, and asks for a
+reconnect on a schedule. It checks what clients send as strictly as the spec says Speko
+does.
 
 Run it on its own to try the example without a Speko account:
 
@@ -35,6 +36,10 @@ API_VERSION = "2026-11-08"
 FRAME_BYTES = 976
 SAMPLES_PER_FRAME = 480
 FRAME_MS = 20
+# docs/test-mode.md: "The fake holds at most 1.7 s of audio that has not come back yet."
+TEST_MODE_HELD_FRAMES = 85
+# docs/test-mode.md: "Every fifth item has no transcript.source."
+SOURCELESS_EVERY = 5
 DOCS = "https://docs.speko.dev/translation/errors#"
 
 # code: (type, HTTP status). The close code is 4000 + status.
@@ -192,6 +197,10 @@ class MockTranslationServer:
         refuse_opens: int = 0,
         # The same, only for upgrades that offer a resume token.
         refuse_resumes: int = 0,
+        # Fail a session that holds more frames than this that haven't come back yet.
+        max_held_frames: Optional[int] = None,
+        # Frames in one transcript item. The spec says 100.
+        frames_per_item: int = 100,
     ) -> None:
         self._port = port
         self.ready_delay = ready_delay
@@ -207,6 +216,8 @@ class MockTranslationServer:
         self.refused_opens = 0
         self.refuse_resumes = refuse_resumes
         self.refused_resumes: list[str] = []
+        self.max_held_frames = max_held_frames
+        self.frames_per_item = frames_per_item
         self.sessions: dict[str, Session] = {}
         self.http_requests: list[tuple[str, str, dict[str, str]]] = []
         self._idempotency: dict[str, tuple[str, bytes, str]] = {}
@@ -334,8 +345,8 @@ class MockTranslationServer:
         test = params.get("test", False)
         target_ok = target.lower() in ("en", "ru") or (
             test
-            and target.startswith("x-error-")
-            and target[8:] in LATE_TRIGGERS | CONNECT_TRIGGERS
+            and target.lower().startswith("x-error-")
+            and target[8:].lower() in LATE_TRIGGERS | CONNECT_TRIGGERS
         )
         if not target_ok:
             message = f"Translation into '{target}' is not supported."
@@ -348,7 +359,7 @@ class MockTranslationServer:
         created = int(time.time())
         session = Session(
             id=session_id,
-            target_language=target.lower() if not target.startswith("x-error-") else target,
+            target_language=target.lower() if not target.lower().startswith("x-error-") else target,
             source_language=source.lower(),
             test=test,
             created=created,
@@ -400,7 +411,8 @@ class MockTranslationServer:
             await ws.close(4401)
             return
 
-        trigger = session.target_language[8:] if session.target_language.startswith("x-") else None
+        target = session.target_language.lower()
+        trigger = target[8:] if target.startswith("x-error-") else None
         if trigger == "org_concurrency_limit":
             await self._fail(session, conn, trigger)
             return
@@ -529,6 +541,10 @@ class MockTranslationServer:
         session.frames_in += 1
         conn.output.append((time.monotonic() + self.echo_delay, sequence, data[16:]))
         conn.output_ready.set()
+        held = sum(len(connection.output) for connection in session.connections)
+        if self.max_held_frames is not None and held > self.max_held_frames:
+            await self._fail(session, conn, "internal")
+            return
         if self.drop_after_frames is not None and len(conn.frames) >= self.drop_after_frames:
             conn.ws.transport.abort()
             return
@@ -617,9 +633,9 @@ class MockTranslationServer:
         conn.frames_out += 1
         session.frames_out += 1
         session.item_frames += 1
-        if session.item_frames == 50:
+        if session.item_frames == self.frames_per_item // 2:
             await self._send_transcript(session, conn.ws, partial=True, final=False)
-        elif session.item_frames == 100:
+        elif session.item_frames == self.frames_per_item:
             await self._send_transcript(session, conn.ws, partial=False, final=False)
             await self._send_transcript(session, conn.ws, partial=False, final=True)
             session.item_frames = 0
@@ -636,7 +652,10 @@ class MockTranslationServer:
     ) -> None:
         source, translated = self._phrases(session, partial=partial)
         item_id = f"item_test_{session.item_number}"
-        for kind, text in (("transcript.source", source), ("transcript.translated", translated)):
+        sides = [("transcript.translated", translated)]
+        if session.item_number % SOURCELESS_EVERY != 0:
+            sides.insert(0, ("transcript.source", source))
+        for kind, text in sides:
             await self._send_json(
                 ws, {"type": kind, "item_id": item_id, "text": text, "final": final}
             )
@@ -645,7 +664,7 @@ class MockTranslationServer:
     def _phrases(session: Session, *, partial: bool) -> tuple[str, str]:
         n = session.item_number
         target = session.target_language
-        if target.startswith("x-error-"):
+        if target.lower().startswith("x-error-"):
             text = f"Test phrase {n}" if partial else f"Test phrase {n}."
             return text, f"[{target}] {text}"
         index = (n - 1) % 3
@@ -694,6 +713,7 @@ async def _serve_forever(args: argparse.Namespace) -> None:
         port=args.port,
         echo_delay=args.echo_delay,
         reconnect_every=args.reconnect_every,
+        max_held_frames=TEST_MODE_HELD_FRAMES,
     ) as server:
         print(f"Mock Translation API on {server.base_url}", flush=True)
         await asyncio.Event().wait()

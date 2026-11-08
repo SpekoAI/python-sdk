@@ -104,6 +104,10 @@ async def test_it_survives_the_reconnect_every_60_seconds(client):
     assert [event.pcm for event in of_type(events, "audio")] == [
         tagged_frame(index) for index in range(frames)
     ]
+    # docs/test-mode.md: every fifth item has no source text.
+    sourceless = "item_test_5"
+    assert any(event.item_id == sourceless for event in of_type(events, "transcript.translated"))
+    assert not any(event.item_id == sourceless for event in of_type(events, "transcript.source"))
 
 
 async def test_an_unsupported_language_is_a_typed_error(client):

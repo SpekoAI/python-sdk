@@ -60,13 +60,13 @@ class PcmFramer:
         return self._take_frames()
 
     def flush(self) -> list[bytes]:
-        """Return what's left, with the last frame padded with silence."""
+        """Return what's left, with the last frame padded with silence. Call it once,
+        at the end of the audio."""
         if self._resampler is not None:
             self._buffer += self._pcm_of(self._resampler.resample(None))
         frames = self._take_frames()
         if self._buffer:
             frames.append(bytes(self._buffer) + bytes(PCM_BYTES_PER_FRAME - len(self._buffer)))
-            self._buffer.clear()
         return frames
 
     def _resample(self, pcm: bytes) -> bytes:

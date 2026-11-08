@@ -385,6 +385,9 @@ class MockTranslationServer:
         return None
 
     async def _stream(self, ws: ServerConnection) -> None:
+        # websockets 13.0 runs this handler even after _process_upgrade refused.
+        if ws.response.status_code != 101:
+            return
         match = STREAM_PATH.match(ws.request.path)
         session = self.sessions.get(match["id"]) if match else None
         offered = _offered_protocols(ws.request.headers)

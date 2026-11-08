@@ -9,6 +9,7 @@ import time
 from contextlib import asynccontextmanager
 
 import pytest
+from websockets.exceptions import ConnectionClosed, InvalidURI
 
 import spekoai.translation_stream as stream_module
 from spekoai import (
@@ -16,6 +17,7 @@ from spekoai import (
     AsyncTranslationStream,
     SpekoTranslationConnectionError,
     TranslationAudio,
+    TranslationReconnect,
 )
 from spekoai.resources import translation as translation_module
 
@@ -53,7 +55,7 @@ def of_type(events, kind: str) -> list:
 
 async def close_code(connection) -> int:
     await asyncio.wait_for(connection.ws.wait_closed(), LOOSE_TIMEOUT)
-    return connection.ws.close_code
+    return connection.ws.protocol.close_code
 
 
 async def collect(stream) -> list:
@@ -238,17 +240,19 @@ async def test_a_late_chunk_inside_the_grace_period_gets_no_silence():
     async with running() as (server, client):
         session = await new_session(client)
         async with client.translation.connect(session.client_secret) as stream:
+            # 100 ms of audio every 100 ms on average, with every other chunk 50 ms late.
             for chunk in range(8):
-                await stream.send(tagged_audio(3, start=chunk * 3))
-                await asyncio.sleep(0.06)
+                await stream.send(tagged_audio(5, start=chunk * 5))
+                await asyncio.sleep(0.15 if chunk % 2 == 0 else 0.05)
             await stream.finish()
             await collect(stream)
 
         pcm = wire_pcm(server.session().connections[0])
-        # Any stall on a busy machine can still earn a silent frame or two.
-        assert pcm.count(SILENCE) <= 3
+        # A stall on a busy machine can still earn a silent frame or two. Without the
+        # grace period every late chunk costs two or three.
+        assert pcm.count(SILENCE) <= 4
         assert [frame for frame in pcm if frame != SILENCE] == [
-            tagged_frame(index) for index in range(24)
+            tagged_frame(index) for index in range(40)
         ]
 
 
@@ -428,6 +432,114 @@ async def test_it_moves_to_a_new_connection_and_loses_nothing():
         assert events[-1].reason == "finished"
 
 
+async def test_a_send_that_fails_as_a_move_begins_does_not_stop_the_stream():
+    # With the rewind, the frame whose send gets cut off is the first one to resend.
+    async with running(
+        reconnect_after_frames=10, reconnect_rewind=1, audio_gap=1.0, echo_delay=0.2
+    ) as (server, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            old_socket = stream._ws
+            real_send = old_socket.send
+            sends = 0
+
+            async def send_until_the_move(message):
+                nonlocal sends
+                sends += 1
+                await real_send(message)
+                if sends == 10:
+                    # Frame 9 makes the mock ask for the move. This send stays suspended
+                    # while the reader takes `reconnect`, and then the old socket fails it.
+                    while not stream._moving:
+                        await asyncio.sleep(0.001)
+                    raise ConnectionClosed(None, None)
+
+            old_socket.send = send_until_the_move
+            await stream.send(tagged_audio(20))
+            await stream.finish()
+            events = await collect(stream)
+
+        assert events[-1].reason == "finished"
+        connections = server.session().connections
+        assert of_type(events, "reconnect")[0].next_sequence == 9
+        assert wire_sequences(connections[1])[0] == 9
+        assert audio_pcm(events) == [tagged_frame(index) for index in range(20)]
+
+
+async def test_a_drop_after_a_move_is_still_a_lost_connection():
+    async with running(reconnect_after_frames=5, drop_after_frames=8) as (server, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            await stream.send(tagged_audio(30))
+            with pytest.raises(SpekoTranslationConnectionError) as caught:
+
+                async def read_past_the_move():
+                    async for event in stream:
+                        if event.type == "reconnect":
+                            server.reconnect_after_frames = None
+
+                await asyncio.wait_for(read_past_the_move(), LOOSE_TIMEOUT)
+
+        assert caught.value.code == "connection_lost"
+        assert len(server.session().connections) == 2
+
+
+async def test_a_second_move_keeps_the_frames_the_first_had_not_resent_yet():
+    async with running() as (_, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            stream._sent.clear()
+            stream._sent.extend([(1, b"one"), (2, b"two")])
+            stream._replay.extend([(3, b"three")])
+
+            stream._begin_move(TranslationReconnect(resume_token="unused", next_sequence=2))
+
+            assert list(stream._replay) == [(2, b"two"), (3, b"three")]
+            assert not stream._sent
+
+
+async def test_silence_does_not_burst_after_a_slow_move():
+    async with running(reconnect_after_frames=5, refuse_resumes=2) as (server, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            async for event in stream:
+                if event.type == "reconnect":
+                    server.reconnect_after_frames = None
+                    break
+            mock_session = server.session()
+            while len(mock_session.connections) < 2:
+                await asyncio.sleep(0.005)
+            opened = time.monotonic()
+            await asyncio.sleep(0.2)
+            elapsed = time.monotonic() - opened
+            taken = len(mock_session.connections[1].frames)
+
+            # The move took about 0.75 s, which is about 37 frames of silence if owed.
+            assert 0 < taken <= elapsed / 0.02 + 6
+            await stream.cancel()
+
+
+async def test_a_second_move_does_not_resend_a_frame_twice():
+    # Each connection takes 30 frames and then gives 25 of them back, so frames that
+    # were replayed on one connection get replayed again on the next.
+    async with running(reconnect_after_frames=30, reconnect_rewind=25, echo_delay=2.0) as (
+        server,
+        client,
+    ):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            await stream.send(tagged_audio(50))
+            await stream.finish()
+            events = await collect(stream)
+
+        for connection in server.session().connections:
+            sequences = wire_sequences(connection)
+            assert sequences == list(range(sequences[0], sequences[0] + len(sequences)))
+        assert not of_type(events, "discontinuity")
+        assert audio_pcm(events) == [tagged_frame(index) for index in range(50)]
+        assert events[-1].reason == "finished"
+
+
 async def test_a_reconnect_with_nothing_queued_carries_on_with_silence():
     async with running(reconnect_after_frames=10) as (server, client):
         session = await new_session(client)
@@ -448,9 +560,10 @@ async def test_a_reconnect_with_nothing_queued_carries_on_with_silence():
 
 
 async def test_frames_already_sent_are_resent_from_next_sequence():
-    async with running(
-        reconnect_after_frames=25, reconnect_rewind=10, echo_delay=0.5
-    ) as (server, client):
+    async with running(reconnect_after_frames=25, reconnect_rewind=10, echo_delay=0.5) as (
+        server,
+        client,
+    ):
         session = await new_session(client)
         async with client.translation.connect(session.client_secret) as stream:
             await stream.send(tagged_audio(40))
@@ -469,9 +582,10 @@ async def test_frames_already_sent_are_resent_from_next_sequence():
 
 async def test_a_first_frame_later_than_next_sequence_gets_a_discontinuity():
     # next_sequence is 0, but only the last second of sent frames is still held.
-    async with running(
-        reconnect_after_frames=70, reconnect_rewind=70, echo_delay=0.05
-    ) as (server, client):
+    async with running(reconnect_after_frames=70, reconnect_rewind=70, echo_delay=0.05) as (
+        server,
+        client,
+    ):
         session = await new_session(client)
         async with client.translation.connect(session.client_secret) as stream:
             await stream.send(tagged_audio(80))
@@ -573,9 +687,10 @@ async def test_a_ping_during_a_move_waits_for_the_new_socket():
 
 
 async def test_the_old_socket_dropping_during_a_move_does_not_end_the_stream():
-    async with running(
-        reconnect_after_frames=10, drop_old_on_reconnect=True, echo_delay=0.5
-    ) as (server, client):
+    async with running(reconnect_after_frames=10, drop_old_on_reconnect=True, echo_delay=0.5) as (
+        server,
+        client,
+    ):
         session = await new_session(client)
         async with client.translation.connect(session.client_secret) as stream:
             await stream.send(tagged_audio(15))
@@ -619,6 +734,15 @@ async def test_giving_up_on_opening_raises_a_typed_error():
         assert session.client_secret not in str(caught.value)
 
 
+async def test_a_stream_url_that_can_never_work_fails_at_once():
+    stream = AsyncTranslationStream("secret", stream_url="not a websocket url")
+    started = time.monotonic()
+    with pytest.raises(InvalidURI):
+        async with stream:
+            pass
+    assert time.monotonic() - started < 1
+
+
 async def test_connect_finds_the_stream_url_of_a_session_this_client_created():
     async with running() as (server, client):
         session = await new_session(client)
@@ -638,9 +762,7 @@ async def test_a_secret_from_elsewhere_needs_its_stream_url():
             with pytest.raises(ValueError, match="stream_url"):
                 other.translation.connect(session.client_secret)
 
-            stream = other.translation.connect(
-                session.client_secret, stream_url=session.stream_url
-            )
+            stream = other.translation.connect(session.client_secret, stream_url=session.stream_url)
             async with stream:
                 await stream.finish()
                 events = await collect(stream)
@@ -763,6 +885,7 @@ async def test_a_lost_connection_raises_once_and_then_the_stream_is_over():
 
             assert caught.value.code == "connection_lost"
             assert caught.value.close_code == 1006
+            assert await collect(stream) == []
             assert await collect(stream) == []
             with pytest.raises(SpekoTranslationConnectionError) as closed:
                 await stream.send(tagged_audio(1))

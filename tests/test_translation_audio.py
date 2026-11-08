@@ -209,6 +209,10 @@ def test_resampling_does_not_depend_on_how_the_audio_was_chunked(rate):
 def test_flush_returns_the_tail_held_in_the_resampler():
     framer = PcmFramer(48000)
 
-    # Less than one frame in, so anything out comes from the flush.
-    assert framer.push(tone(1000, 48000, seconds=0.01)) == []
-    assert len(framer.flush()) == 1
+    # 40 ms is exactly two frames at 24 kHz, and the resampler holds some of it back.
+    frames = framer.push(struct.pack("<h", 9000) * 1920)
+    frames.extend(framer.flush())
+
+    # The end is the audio's own tail, not silence added as padding.
+    assert len(frames) == 2
+    assert samples(frames[-1])[-1] == pytest.approx(9000, abs=50)

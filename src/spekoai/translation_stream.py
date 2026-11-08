@@ -138,7 +138,6 @@ class AsyncTranslationStream:
         self._ws: Optional[ClientConnection] = None
         self._sockets: set[ClientConnection] = set()
         self._tasks: set[asyncio.Task[None]] = set()
-        self._move_task: Optional[asyncio.Task[None]] = None
         self._entered = False
         self._closed = False
         # True once the stream is over: no more events will be queued after the end.
@@ -243,13 +242,12 @@ class AsyncTranslationStream:
         if self._closed or not self._entered:
             return
         self._closed = True
-        running_socket = self._ws if self._connected.is_set() and not self._done else None
+        was_running = not self._done
         self._end_stream()
-        if running_socket is not None:
+        if was_running:
+            assert self._ws is not None
             try:
-                await asyncio.wait_for(
-                    running_socket.send(_control("cancel")), _CANCEL_TIMEOUT_SECONDS
-                )
+                await asyncio.wait_for(self._ws.send(_control("cancel")), _CANCEL_TIMEOUT_SECONDS)
             except (ConnectionClosed, OSError, asyncio.TimeoutError):
                 pass
         tasks = list(self._tasks)
@@ -263,11 +261,10 @@ class AsyncTranslationStream:
         if not self._entered:
             raise RuntimeError("Use the stream inside 'async with' before calling this.")
 
-    def _spawn(self, work: Coroutine[Any, Any, None]) -> asyncio.Task[None]:
+    def _spawn(self, work: Coroutine[Any, Any, None]) -> None:
         task = asyncio.create_task(work)
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
-        return task
 
     async def _open(self, credential: str, budget: float, failure_code: str) -> ClientConnection:
         """Open a socket. A credential is spent only when the socket opens, so a failed
@@ -353,8 +350,8 @@ class AsyncTranslationStream:
     async def _idle(self, timeout: Optional[float]) -> None:
         """Wait for something new to send. Nothing can change between the pump's checks
         and the ``clear`` here, because no await separates them."""
-        if self._done:
-            return
+        if not self._connected.is_set():
+            return  # A move began during the pump's last send. Its wake-up was spent.
         self._wake.clear()
         try:
             await asyncio.wait_for(self._wake.wait(), timeout)
@@ -377,7 +374,7 @@ class AsyncTranslationStream:
     async def _read(self, ws: ClientConnection) -> None:
         try:
             async for message in ws:
-                self._on_message(ws, message)
+                self._on_message(message)
                 if self._done:
                     return
         except ConnectionClosed:
@@ -392,7 +389,7 @@ class AsyncTranslationStream:
             return
         self._on_socket_closed(ws)
 
-    def _on_message(self, ws: ClientConnection, message: Any) -> None:
+    def _on_message(self, message: Any) -> None:
         if not isinstance(message, str):
             sequence, sample_offset, pcm = decode_frame(message)
             self._events.put_nowait(
@@ -404,7 +401,7 @@ class AsyncTranslationStream:
             return
         self._events.put_nowait(event)
         if isinstance(event, TranslationReconnect):
-            self._begin_move(ws, event)
+            self._begin_move(event)
         elif isinstance(event, TranslationErrorEvent):
             self._error_seen = True
         elif isinstance(event, TranslationEnded):
@@ -424,7 +421,7 @@ class AsyncTranslationStream:
                 "The translation connection was lost, so the session has ended. "
                 "Create a new session to continue.",
                 "connection_lost",
-                close_code=ws.close_code,
+                close_code=ws.protocol.close_code,
             )
         )
 
@@ -435,17 +432,10 @@ class AsyncTranslationStream:
         if error is not None:
             self._events.put_nowait(error)
         self._events.put_nowait(_END_OF_STREAM)
-        # Release the pump wherever it is waiting, so that it sees the end.
-        self._connected.set()
-        self._wake.set()
-        if self._move_task is not None and self._move_task is not asyncio.current_task():
-            self._move_task.cancel()
 
     # --- Moving to a new connection ----------------------------------------------
 
-    def _begin_move(self, ws: ClientConnection, event: TranslationReconnect) -> None:
-        if self._moving or ws is not self._ws:
-            return
+    def _begin_move(self, event: TranslationReconnect) -> None:
         self._moving = True
         self._connected.clear()
         # Everything from next_sequence on goes out again, including what the old socket
@@ -454,11 +444,10 @@ class AsyncTranslationStream:
         held = itertools.chain(self._sent, self._replay)
         self._replay = deque(frame for frame in held if frame[0] >= event.next_sequence)
         self._sent.clear()
-        # Speko ignores controls that reach the old socket, so this one goes out again.
+        # Speko ignores controls that reach the old socket, so this one goes out again,
+        # after the frames above.
         self._closing_sent = False
-        if self._closing == "cancel":
-            self._replay.clear()
-        self._move_task = self._spawn(self._move(event.resume_token))
+        self._spawn(self._move(event.resume_token))
         self._wake.set()
 
     async def _move(self, resume_token: str) -> None:

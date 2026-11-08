@@ -122,11 +122,13 @@ def test_retrieve_sends_the_version_and_no_idempotency_key(client):
 
 @respx.mock
 def test_session_id_is_encoded_as_one_path_segment(client):
-    route = respx.get(f"{SESSIONS}/a%2Fb").mock(return_value=httpx.Response(200, json=ENDED))
+    route = respx.route(method="GET", host="translate.test").mock(
+        return_value=httpx.Response(200, json=ENDED)
+    )
 
     client.translation.sessions.retrieve("a/b")
 
-    assert route.called
+    assert route.calls[0].request.url.raw_path == b"/v1/translation/sessions/a%2Fb"
 
 
 @respx.mock
@@ -333,6 +335,29 @@ async def test_async_create_retrieve_end(aclient):
     assert create.calls[0].request.headers["idempotency-key"]
     assert end.calls[0].request.headers["idempotency-key"]
     assert end.calls[0].request.extensions["timeout"]["read"] > 25
+
+
+@respx.mock
+async def test_async_retries_a_network_failure_with_the_same_key(aclient):
+    route = respx.post(SESSIONS).mock(
+        side_effect=[httpx.ConnectError("no route"), httpx.Response(200, json=SESSION)]
+    )
+
+    session = await aclient.translation.sessions.create(target_language="ru")
+
+    assert session.id == SESSION["id"]
+    first, second = (call.request.headers["idempotency-key"] for call in route.calls)
+    assert first == second
+
+
+@respx.mock
+async def test_async_gives_up_after_three_attempts(aclient):
+    route = respx.get(ONE).mock(side_effect=httpx.ConnectError("no route"))
+
+    with pytest.raises(httpx.ConnectError):
+        await aclient.translation.sessions.retrieve(SESSION["id"])
+
+    assert route.call_count == 3
 
 
 @respx.mock

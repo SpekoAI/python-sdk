@@ -142,6 +142,8 @@ not guaranteed after the deadline or event-loop termination.
 Translate a live audio stream, with captions. Your server creates a session, and the stream helper handles the frame format, resampling to 24 kHz, continuous silence, and moving to a new connection when Speko asks. The helper is async-only; `sessions` also works on the sync client.
 
 ```python
+import os
+
 from spekoai import AsyncSpeko
 
 async with AsyncSpeko(api_key=os.environ["SPEKO_API_KEY"]) as client:

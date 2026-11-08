@@ -256,17 +256,17 @@ async def test_a_late_chunk_inside_the_grace_period_gets_no_silence():
     async with running() as (server, client):
         session = await new_session(client)
         async with client.translation.connect(session.client_secret) as stream:
-            # 100 ms of audio every 100 ms on average, with every other chunk 50 ms late.
+            # 100 ms of audio every 100 ms on average, with every other chunk 70 ms late.
             for chunk in range(8):
                 await stream.send(tagged_audio(5, start=chunk * 5))
-                await asyncio.sleep(0.15 if chunk % 2 == 0 else 0.05)
+                await asyncio.sleep(0.17 if chunk % 2 == 0 else 0.03)
             await stream.finish()
             await collect(stream)
 
         pcm = wire_pcm(server.session().connections[0])
         # A stall on a busy machine can still earn a silent frame or two. Without the
-        # grace period every late chunk costs two or three.
-        assert pcm.count(SILENCE) <= 4
+        # grace period the first late chunk costs four, and they stay as added latency.
+        assert pcm.count(SILENCE) <= 2
         assert [frame for frame in pcm if frame != SILENCE] == [
             tagged_frame(index) for index in range(40)
         ]

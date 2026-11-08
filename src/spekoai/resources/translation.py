@@ -16,6 +16,7 @@ import httpx
 from spekoai._http import path_id
 from spekoai.errors import translation_error_from_body
 from spekoai.models import TranslationSession
+from spekoai.translation_stream import AsyncTranslationStream
 
 DEFAULT_TRANSLATION_BASE_URL = "https://translate.speko.dev"
 TRANSLATION_API_VERSION = "2026-11-08"
@@ -155,6 +156,8 @@ class AsyncTranslationSessionsResource:
     def __init__(self, client: httpx.AsyncClient, base_url: str) -> None:
         self._client = client
         self._urls = _SessionUrls(base_url)
+        # client_secret: (stream_url, expires_at), for connect(client_secret).
+        self._unexpired_secrets: dict[str, tuple[str, int]] = {}
 
     async def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         for delay in _RETRY_DELAYS:
@@ -183,7 +186,24 @@ class AsyncTranslationSessionsResource:
             json=_create_body(target_language, source_language, test),
             headers=_post_headers(idempotency_key),
         )
-        return _session_from(resp)
+        session = _session_from(resp)
+        self._remember_secret(session)
+        return session
+
+    def _remember_secret(self, session: TranslationSession) -> None:
+        now = time.time()
+        self._unexpired_secrets = {
+            secret: known for secret, known in self._unexpired_secrets.items() if known[1] > now
+        }
+        if session.client_secret is not None:
+            self._unexpired_secrets[session.client_secret] = (
+                session.stream_url,
+                session.expires_at,
+            )
+
+    def _stream_url_of(self, client_secret: str) -> Optional[str]:
+        known = self._unexpired_secrets.get(client_secret)
+        return None if known is None else known[0]
 
     async def retrieve(self, session_id: str) -> TranslationSession:
         """Fetch a session (async). ``client_secret`` is ``None``."""
@@ -206,3 +226,34 @@ class AsyncTranslationSessionsResource:
 class AsyncTranslationResource:
     def __init__(self, client: httpx.AsyncClient, base_url: str) -> None:
         self.sessions = AsyncTranslationSessionsResource(client, base_url)
+
+    def connect(
+        self,
+        client_secret: str,
+        *,
+        stream_url: Optional[str] = None,
+        sample_rate: int = 24000,
+        connect_timeout: float = 60.0,
+    ) -> AsyncTranslationStream:
+        """Open a session's stream. See ``AsyncTranslationStream``.
+
+        ``async with client.translation.connect(session.client_secret) as stream:``
+
+        ``stream_url`` is needed only for a secret that this client didn't create.
+        Client secrets are opaque, so the URL can't be worked out from one.
+        ``sample_rate`` is the rate of the PCM you'll send. Audio you receive is always
+        24 kHz. ``connect_timeout`` limits how long a failed open is retried. A secret
+        lasts 60 seconds, so there is no reason to raise it.
+        """
+        url = stream_url or self.sessions._stream_url_of(client_secret)
+        if url is None:
+            raise ValueError(
+                "This client didn't create that client_secret, or it has expired. "
+                "Pass the session's stream_url as well."
+            )
+        return AsyncTranslationStream(
+            client_secret,
+            stream_url=url,
+            sample_rate=sample_rate,
+            connect_timeout=connect_timeout,
+        )

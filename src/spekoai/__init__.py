@@ -229,6 +229,7 @@ from spekoai.models import (
     WorkspaceWebhookEventType,
 )
 from spekoai.realtime import AsyncRealtimeSession
+from spekoai.translation_stream import AsyncTranslationStream
 
 __all__ = [
     "Speko",
@@ -239,6 +240,7 @@ __all__ = [
     "SpekoApiError",
     "SpekoAuthError",
     "SpekoRateLimitError",
+    "AsyncTranslationStream",
     "SpekoTranslationAuthError",
     "SpekoTranslationBalanceError",
     "SpekoTranslationConnectionError",

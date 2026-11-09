@@ -2,6 +2,7 @@
 
 import array
 import asyncio
+import gc
 import json
 import logging
 import random
@@ -992,7 +993,7 @@ async def test_a_failure_here_stops_the_silence_and_cancels_the_session_at_once(
     ["", "a, SECRETVALUE", "abc\r\nX: SECRETVALUE", "токен-SECRETVALUE"],
     ids=["empty", "comma", "crlf", "not-ascii"],
 )
-async def test_a_resume_token_that_cannot_be_offered_raises_without_echoing_it(token):
+async def test_a_resume_token_that_cannot_be_offered_raises_without_echoing_it(token, caplog):
     async with running() as (server, client):
         session = await new_session(client)
         async with client.translation.connect(session.client_secret) as stream:
@@ -1003,6 +1004,36 @@ async def test_a_resume_token_that_cannot_be_offered_raises_without_echoing_it(t
 
         assert caught.value.code in ("protocol_error", "resume_failed")
         assert "SECRETVALUE" not in str(caught.value)
+        gc.collect()  # asyncio logs an unretrieved task exception, token and all, on collection.
+        assert "SECRETVALUE" not in caplog.text
+
+
+async def test_nothing_after_ended_is_acted_on():
+    usage = {"input_audio_ms": 0, "output_audio_ms": 0}
+    async with running() as (server, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            connection = server.session().connections[0]
+            ended = {"type": "ended", "reason": "finished", "usage": usage}
+            await connection.ws.send(json.dumps(ended))
+            extra = {"type": "reconnect", "resume_token": "extra_resume", "next_sequence": 0}
+            await connection.ws.send(json.dumps(extra))
+            events = await collect(stream)
+            await asyncio.sleep(0.05)
+
+        assert events[-1].type == "ended"
+        assert "extra_resume" not in server.upgrades
+        assert connection.controls == []
+
+
+async def test_a_normal_session_leaves_nothing_in_the_asyncio_log(caplog):
+    async with running() as (_, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            await stream.send(tagged_audio(5))
+        gc.collect()
+
+    assert [record for record in caplog.records if record.name == "asyncio"] == []
 
 
 async def test_a_redirect_answering_a_resume_gives_up_at_the_budget(monkeypatch):

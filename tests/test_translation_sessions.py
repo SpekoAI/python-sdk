@@ -462,6 +462,17 @@ def test_a_deep_error_body_is_still_a_typed_error(client):
 
 
 @respx.mock
+def test_a_deep_conflict_body_is_not_retried_and_is_a_typed_error(client):
+    route = respx.get(ONE).mock(return_value=httpx.Response(409, text="[" * 200000))
+
+    with pytest.raises(SpekoTranslationError) as caught:
+        client.translation.sessions.retrieve(SESSION["id"])
+
+    assert route.call_count == 1
+    assert caught.value.status == 409
+
+
+@respx.mock
 def test_a_translation_auth_error_is_also_a_speko_auth_error(client):
     respx.post(SESSIONS).mock(
         return_value=httpx.Response(

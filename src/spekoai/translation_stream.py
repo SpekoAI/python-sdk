@@ -517,10 +517,10 @@ class AsyncTranslationStream:
 
     async def _cancel_on_server(self) -> None:
         # Speko ignores controls on the old socket, so a move has to finish first. Its
-        # budget bounds this wait, and a move that failed leaves no socket to cancel on.
+        # budget bounds this wait.
         if self._move_task is not None:
             await asyncio.wait({self._move_task})
-        if self._ended_seen or self._moving:
+        if self._ended_seen:
             return
         assert self._ws is not None
         try:

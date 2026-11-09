@@ -187,8 +187,7 @@ class AsyncTranslationStream:
         self._moving = False
         self._move_task: Optional[asyncio.Task[None]] = None
         self._error_seen = False
-        # True once Speko has ended the session or its socket is gone: nothing to cancel.
-        self._session_over = False
+        self._ended_seen = False
         self._stopping: Optional[asyncio.Task[None]] = None
         self._buffered_bytes = 0
         # Audio waiting for its turn, as 960-byte PCM. It gets numbered when sent.
@@ -476,7 +475,7 @@ class AsyncTranslationStream:
         elif isinstance(event, TranslationErrorEvent):
             self._error_seen = True
         elif isinstance(event, TranslationEnded):
-            self._session_over = True
+            self._ended_seen = True
             self._end_stream()
 
     def _on_socket_closed(self, ws: ClientConnection) -> None:
@@ -484,7 +483,6 @@ class AsyncTranslationStream:
         # After `reconnect`, the old socket closing or dropping doesn't end the session.
         if self._moving or ws is not self._ws:
             return
-        self._session_over = True
         if self._error_seen:
             # Close 4401 without `ended`: the error event already said why.
             self._end_stream()
@@ -519,10 +517,10 @@ class AsyncTranslationStream:
 
     async def _cancel_on_server(self) -> None:
         # Speko ignores controls on the old socket, so a move has to finish first. Its
-        # budget bounds this wait.
+        # budget bounds this wait, and a move that failed leaves no socket to cancel on.
         if self._move_task is not None:
             await asyncio.wait({self._move_task})
-        if self._session_over or self._moving:
+        if self._ended_seen or self._moving:
             return
         assert self._ws is not None
         try:
@@ -558,7 +556,6 @@ class AsyncTranslationStream:
         try:
             ws = await self._open(resume_token, _RESUME_SECONDS, "resume_failed")
         except SpekoTranslationConnectionError as error:
-            self._session_over = True
             self._end_stream(error)
             return
         self._ws = ws

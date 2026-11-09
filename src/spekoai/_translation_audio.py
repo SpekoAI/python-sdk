@@ -42,8 +42,9 @@ class PcmFramer:
     960-byte payloads of 24 kHz frames. Holds whatever doesn't fill a frame yet."""
 
     def __init__(self, sample_rate: int) -> None:
-        if sample_rate <= 0:
-            raise ValueError(f"sample_rate must be positive, not {sample_rate}")
+        # A rate as low as 1 Hz would turn a few KB into gigabytes of resampled audio.
+        if not 8000 <= sample_rate <= 192000:
+            raise ValueError(f"sample_rate must be 8000 to 192000 Hz, not {sample_rate}")
         self._sample_rate = sample_rate
         self._resampler: Optional[AudioResampler] = None
         if sample_rate != STREAM_SAMPLE_RATE:

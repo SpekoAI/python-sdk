@@ -197,6 +197,13 @@ class MockTranslationServer:
         refuse_opens: int = 0,
         # The same, only for upgrades that offer a resume token.
         refuse_resumes: int = 0,
+        # Answer upgrades with a redirect here: all of them, or only those with a token.
+        redirect_opens_to: Optional[str] = None,
+        redirect_resumes_to: Optional[str] = None,
+        # Never send `ended` after `finish`, though the session keeps answering pings.
+        never_end: bool = False,
+        # Leave the old socket open after `reconnect` instead of closing it with 1012.
+        keep_old_open: bool = False,
         # Fail a session that holds more frames than this that haven't come back yet.
         max_held_frames: Optional[int] = None,
         # Frames in one transcript item. The spec says 100.
@@ -216,6 +223,12 @@ class MockTranslationServer:
         self.refused_opens = 0
         self.refuse_resumes = refuse_resumes
         self.refused_resumes: list[str] = []
+        self.redirect_opens_to = redirect_opens_to
+        self.redirect_resumes_to = redirect_resumes_to
+        self.never_end = never_end
+        self.keep_old_open = keep_old_open
+        # The credential of every upgrade this server was asked for, refused or not.
+        self.upgrades: list[str] = []
         self.max_held_frames = max_held_frames
         self.frames_per_item = frames_per_item
         self.sessions: dict[str, Session] = {}
@@ -385,11 +398,15 @@ class MockTranslationServer:
     # --- Stream -----------------------------------------------------------------
 
     def _process_upgrade(self, connection: ServerConnection, request: Any) -> Optional[Response]:
+        offered = _offered_protocols(request.headers)
+        credential = offered[1] if len(offered) > 1 else ""
+        self.upgrades.append(credential)
+        redirect = self.redirect_resumes_to if "_resume_" in credential else self.redirect_opens_to
+        if redirect is not None:
+            return Response(302, "Found", Headers({"Location": redirect}), b"")
         if self.refused_opens < self.refuse_opens:
             self.refused_opens += 1
             return Response(503, "Service Unavailable", Headers(), b"")
-        offered = _offered_protocols(request.headers)
-        credential = offered[1] if len(offered) > 1 else ""
         if "_resume_" in credential and len(self.refused_resumes) < self.refuse_resumes:
             self.refused_resumes.append(credential)
             return Response(503, "Service Unavailable", Headers(), b"")
@@ -469,10 +486,13 @@ class MockTranslationServer:
             # arrives on the new socket."
             lost = [item[1] for item in previous.output]
             previous.output.clear()
-            await self._send_json(
-                conn.ws,
-                {"type": "discontinuity", "first_sequence": lost[0], "last_sequence": lost[-1]},
-            )
+            try:
+                await self._send_json(
+                    conn.ws,
+                    {"type": "discontinuity", "first_sequence": lost[0], "last_sequence": lost[-1]},
+                )
+            except ConnectionClosed:
+                return  # This socket closed before the old one drained.
         conn.may_output.set()
 
     def _after_socket_closed(self, session: Session, conn: Connection) -> None:
@@ -566,7 +586,8 @@ class MockTranslationServer:
         conn.controls.append(control)
         ping_id = control.get("id")
         if kind == "finish":
-            await self._begin_finish(session, conn, "finished")
+            if not self.never_end:
+                await self._begin_finish(session, conn, "finished")
         elif kind == "cancel":
             conn.output.clear()
             self._mark_ended(session, "canceled")
@@ -614,6 +635,8 @@ class MockTranslationServer:
                 conn.output.popleft()
                 await self._send_output(session, conn, pcm)
             elif conn.moving:
+                if self.keep_old_open:
+                    await asyncio.Event().wait()
                 await ws.close(1012)
                 conn.drained.set()
                 return

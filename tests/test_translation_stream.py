@@ -2,6 +2,7 @@
 
 import array
 import asyncio
+import json
 import logging
 import random
 import struct
@@ -775,7 +776,7 @@ async def test_giving_up_on_opening_raises_a_typed_error():
 
 
 async def test_a_stream_url_that_can_never_work_fails_at_once():
-    stream = AsyncTranslationStream("secret", stream_url="not a websocket url")
+    stream = AsyncTranslationStream("secret", stream_url="wss://")
     started = time.monotonic()
     with pytest.raises(InvalidURI):
         async with stream:
@@ -940,8 +941,22 @@ async def test_a_lost_connection_raises_once_and_then_the_stream_is_over():
         '["not", "an", "object"]',
         '{"type": "lag"}',
         '{"type": "reconnect", "resume_token": "trs_1_resume_SECRETVALUE"}',
+        '{"type": []}',
+        '{"type": {"a": 1}}',
+        "[" * 200000,
+        '{"type":' * 100000,
     ],
-    ids=["short-frame", "bad-json", "not-object", "missing-field", "reconnect-missing-field"],
+    ids=[
+        "short-frame",
+        "bad-json",
+        "not-object",
+        "missing-field",
+        "reconnect-missing-field",
+        "type-is-a-list",
+        "type-is-an-object",
+        "deep-array",
+        "deep-object",
+    ],
 )
 async def test_a_malformed_message_from_the_server_raises_without_echoing_it(message):
     async with running() as (server, client):
@@ -956,7 +971,362 @@ async def test_a_malformed_message_from_the_server_raises_without_echoing_it(mes
         assert caught.value.__cause__ is None
 
 
+async def test_a_failure_here_stops_the_silence_and_cancels_the_session_at_once():
+    async with running() as (server, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            connection = server.session().connections[0]
+            await connection.ws.send('{"type": []}')
+            with pytest.raises(SpekoTranslationConnectionError):
+                await collect(stream)
+
+            await asyncio.wait_for(server.session().done.wait(), LOOSE_TIMEOUT)
+            assert server.session().end_reason == "canceled"
+            sent = len(connection.frames)
+            await asyncio.sleep(0.15)
+            assert len(connection.frames) == sent
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["", "a, SECRETVALUE", "abc\r\nX: SECRETVALUE", "токен-SECRETVALUE"],
+    ids=["empty", "comma", "crlf", "not-ascii"],
+)
+async def test_a_resume_token_that_cannot_be_offered_raises_without_echoing_it(token):
+    async with running() as (server, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            reconnect = {"type": "reconnect", "resume_token": token, "next_sequence": 0}
+            await server.session().connections[0].ws.send(json.dumps(reconnect))
+            with pytest.raises(SpekoTranslationConnectionError) as caught:
+                await collect(stream)
+
+        assert caught.value.code in ("protocol_error", "resume_failed")
+        assert "SECRETVALUE" not in str(caught.value)
+
+
+async def test_a_redirect_answering_a_resume_gives_up_at_the_budget(monkeypatch):
+    monkeypatch.setattr(stream_module, "_RESUME_SECONDS", 0.5)
+    options = {"reconnect_after_frames": 3, "redirect_resumes_to": "https://edge.example/x"}
+    async with running(**options) as (server, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            await stream.send(tagged_audio(5))
+            with pytest.raises(SpekoTranslationConnectionError) as caught:
+                await collect(stream)
+
+        assert caught.value.code == "resume_failed"
+        assert len(server.session().connections) == 1
+
+
+async def test_a_credential_does_not_follow_a_redirect_to_another_host():
+    async with MockTranslationServer() as other:
+        target = f"{other._ws_base}/v1/translation/sessions/trs_x/stream"
+        async with running(redirect_opens_to=target) as (server, client):
+            session = await new_session(client)
+            stream = client.translation.connect(session.client_secret, connect_timeout=0.1)
+            with pytest.raises(SpekoTranslationConnectionError) as caught:
+                async with stream:
+                    pass
+
+        assert caught.value.code == "connect_failed"
+        assert server.upgrades[0] == session.client_secret
+        assert other.upgrades == []
+
+
+# --- Plain transports ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "ws://example.com/stream",
+        "ws://127.0.0.1.example.com/stream",
+        "ws://localhost.example.com/stream",
+        "ws://127.0.0.1@example.com/stream",
+        "ws://10.0.0.1/stream",
+        "ws:///stream",
+        "http://127.0.0.1/stream",
+        "https://example.com/stream",
+        "not a websocket url",
+    ],
+)
+def test_a_stream_url_that_would_expose_the_credential_is_refused(url):
+    with pytest.raises(ValueError):
+        AsyncTranslationStream("secret", stream_url=url)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "wss://example.com/stream",
+        "ws://127.0.0.1:9/stream",
+        "ws://127.8.8.8/stream",
+        "ws://[::1]:9/stream",
+        "ws://localhost:9/stream",
+        "ws://LOCALHOST:9/stream",
+    ],
+)
+def test_wss_and_a_loopback_ws_are_accepted(url):
+    AsyncTranslationStream("secret", stream_url=url)
+
+
+async def test_a_plain_stream_url_in_a_created_session_is_refused_at_connect():
+    async with running() as (server, client):
+        session = await new_session(client)
+        known = client.translation.sessions._unexpired_secrets
+        known[session.client_secret] = ("ws://example.com/stream", session.expires_at)
+        with pytest.raises(ValueError):
+            client.translation.connect(session.client_secret)
+
+
+# --- Unread events ------------------------------------------------------------------
+
+
+AUDIO_EVENT_COST = 976 + stream_module._EVENT_OVERHEAD_BYTES
+
+
+def quiet_server():
+    """A session that sends nothing unless a test tells it to."""
+    return running(ready_delay=60, echo_delay=60)
+
+
+async def test_events_left_unread_end_the_session_with_a_typed_error(monkeypatch):
+    monkeypatch.setattr(stream_module, "_MAX_BUFFERED_BYTES", 10 * AUDIO_EVENT_COST)
+    async with quiet_server() as (server, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            connection = server.session().connections[0]
+            for index in range(11):
+                await connection.ws.send(struct.pack("<QQ", index, index * 480) + SILENCE)
+
+            # Nothing has been read yet, and the session has already stopped.
+            await asyncio.wait_for(server.session().done.wait(), LOOSE_TIMEOUT)
+            assert server.session().end_reason == "canceled"
+
+            events = []
+            with pytest.raises(SpekoTranslationConnectionError) as caught:
+                async for event in stream:
+                    events.append(event)
+
+        assert [event.sequence for event in events] == list(range(10))
+        assert caught.value.code == "client_too_slow"
+
+
+async def test_reading_events_makes_room_for_more(monkeypatch):
+    monkeypatch.setattr(stream_module, "_MAX_BUFFERED_BYTES", 2 * AUDIO_EVENT_COST)
+    async with quiet_server() as (server, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            connection = server.session().connections[0]
+            for index in range(10):
+                await connection.ws.send(struct.pack("<QQ", index, index * 480) + SILENCE)
+                event = await asyncio.wait_for(stream.__anext__(), LOOSE_TIMEOUT)
+                assert event.sequence == index
+
+            await stream.cancel()
+            await collect(stream)
+
+        assert server.session().end_reason == "canceled"
+
+
+async def test_the_limit_on_unread_events_also_counts_small_ones(monkeypatch):
+    monkeypatch.setattr(stream_module, "_MAX_BUFFERED_BYTES", 10 * AUDIO_EVENT_COST)
+    async with quiet_server() as (server, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            connection = server.session().connections[0]
+            pong = '{"type": "pong"}'
+            for _ in range(int(10 * AUDIO_EVENT_COST / stream_module._EVENT_OVERHEAD_BYTES) + 1):
+                await connection.ws.send(pong)
+
+            await asyncio.wait_for(server.session().done.wait(), LOOSE_TIMEOUT)
+            with pytest.raises(SpekoTranslationConnectionError) as caught:
+                await collect(stream)
+
+        assert caught.value.code == "client_too_slow"
+
+
+# --- Finishing ----------------------------------------------------------------------
+
+
+async def test_a_server_that_never_ends_after_finish_raises_a_typed_error(monkeypatch):
+    monkeypatch.setattr(stream_module, "_END_TIMEOUT_SECONDS", 0.2)
+    async with running(never_end=True) as (server, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            await stream.finish()
+            with pytest.raises(SpekoTranslationConnectionError) as caught:
+                await collect(stream)
+
+            assert caught.value.code == "end_timeout"
+            await asyncio.wait_for(server.session().done.wait(), LOOSE_TIMEOUT)
+            assert server.session().end_reason == "canceled"
+
+
+async def test_the_deadline_after_finish_starts_when_finish_goes_out(monkeypatch):
+    monkeypatch.setattr(stream_module, "_END_TIMEOUT_SECONDS", 0.2)
+    async with running() as (server, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            await stream.send(tagged_audio(30))  # 0.6 s of queue, three times the deadline.
+            await stream.finish()
+            events = await collect(stream)
+
+        assert events[-1].type == "ended"
+        assert events[-1].reason == "finished"
+
+
+async def test_the_deadline_after_finish_starts_again_on_a_new_connection(monkeypatch):
+    monkeypatch.setattr(stream_module, "_END_TIMEOUT_SECONDS", 0.3)
+    options = {"reconnect_after_frames": 3, "refuse_resumes": 2, "echo_delay": 0.2}
+    async with running(**options) as (server, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            await stream.send(tagged_audio(3))
+            await stream.finish()
+            events = await collect(stream)
+
+        assert events[-1].type == "ended"
+        assert server.session().connections[1].controls == [{"type": "finish"}]
+
+
+async def test_a_prompt_ended_after_finish_raises_nothing(monkeypatch):
+    monkeypatch.setattr(stream_module, "_END_TIMEOUT_SECONDS", 1.0)
+    async with running() as (server, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            await stream.finish()
+            events = await collect(stream)
+            await asyncio.sleep(1.1)  # Past the deadline: nothing may fire any more.
+
+        assert events[-1].type == "ended"
+        assert server.session().end_reason == "finished"
+
+
+# --- Limits on moves ----------------------------------------------------------------
+
+
+async def test_reconnects_during_a_move_are_ignored():
+    options = {"reconnect_after_frames": 3, "refuse_resumes": 2}
+    async with running(**options) as (server, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            await stream.send(tagged_audio(5))
+            events = []
+            async for event in stream:
+                events.append(event)
+                if event.type == "reconnect":
+                    break
+            old = server.session().connections[0]
+            for index in range(5):
+                extra = {
+                    "type": "reconnect",
+                    "resume_token": f"extra_resume_{index}",
+                    "next_sequence": 0,
+                }
+                await old.ws.send(json.dumps(extra))
+            await stream.finish()
+            events += await collect(stream)
+
+        assert len(of_type(events, "reconnect")) == 1
+        assert not [token for token in server.upgrades if token.startswith("extra")]
+        assert len(server.session().connections) == 2
+
+
+async def test_a_reconnect_from_a_socket_already_left_is_ignored():
+    options = {"reconnect_after_frames": 3, "keep_old_open": True}
+    async with running(**options) as (server, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            await stream.send(tagged_audio(3))
+            events = []
+            async for event in stream:
+                events.append(event)
+                if event.type == "reconnect":
+                    break
+            while len(server.session().connections) < 2:
+                await asyncio.sleep(0.01)
+            server.reconnect_after_frames = None
+            await asyncio.sleep(0.05)
+            old = server.session().connections[0]
+            extra = {"type": "reconnect", "resume_token": "extra_resume", "next_sequence": 0}
+            await old.ws.send(json.dumps(extra))
+            await asyncio.sleep(0.1)
+            await stream.cancel()
+            events += await collect(stream)
+
+        assert "extra_resume" not in server.upgrades
+        assert len(of_type(events, "reconnect")) == 1
+
+
+async def test_too_many_open_sockets_end_the_stream_with_a_typed_error():
+    options = {"reconnect_after_frames": 1, "keep_old_open": True}
+    async with running(**options) as (server, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            with pytest.raises(SpekoTranslationConnectionError) as caught:
+                await collect(stream)
+
+        assert caught.value.code == "protocol_error"
+        assert len(server.session().connections) == stream_module._MAX_OPEN_SOCKETS
+
+
 # --- Lifecycle ----------------------------------------------------------------------
+
+
+async def test_leaving_the_block_during_a_move_cancels_on_the_new_socket():
+    options = {"reconnect_after_frames": 3, "refuse_resumes": 2}
+    async with running(**options) as (server, client):
+        session = await new_session(client)
+        async with client.translation.connect(session.client_secret) as stream:
+            await stream.send(tagged_audio(5))
+            async for event in stream:
+                if event.type == "reconnect":
+                    break
+
+        await asyncio.wait_for(server.session().done.wait(), LOOSE_TIMEOUT)
+        assert server.session().end_reason == "canceled"
+        old, new = server.session().connections
+        assert old.controls == []
+        assert new.controls == [{"type": "cancel"}]
+        assert new.frames == []
+
+
+async def test_leaving_the_block_during_a_move_that_never_opens_stops_at_the_budget(monkeypatch):
+    monkeypatch.setattr(stream_module, "_RESUME_SECONDS", 0.5)
+    options = {"reconnect_after_frames": 3, "refuse_resumes": 1000}
+    async with running(**options) as (server, client):
+        session = await new_session(client)
+        started = None
+        async with client.translation.connect(session.client_secret) as stream:
+            await stream.send(tagged_audio(5))
+            async for event in stream:
+                if event.type == "reconnect":
+                    started = time.monotonic()
+                    break
+
+        # It waited for the move to give up, and no longer than that.
+        assert 0.1 < time.monotonic() - started < 2.0
+        assert server.session().connections[0].controls == []
+
+
+async def test_a_cancelled_close_still_releases_the_sockets():
+    options = {"reconnect_after_frames": 3, "refuse_resumes": 1000}
+    async with running(**options) as (server, client):
+        session = await new_session(client)
+        stream = client.translation.connect(session.client_secret)
+        await stream.__aenter__()
+        await stream.send(tagged_audio(5))
+        async for event in stream:
+            if event.type == "reconnect":
+                break
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(stream.close(), 0.05)
+
+        await asyncio.wait_for(server.session().connections[0].ws.wait_closed(), LOOSE_TIMEOUT)
+        assert stream._tasks == set()
+
 
 
 async def test_leaving_the_block_early_cancels_the_session():

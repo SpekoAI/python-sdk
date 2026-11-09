@@ -148,10 +148,16 @@ def test_flush_with_nothing_sent_gives_nothing():
     assert PcmFramer(16000).flush() == []
 
 
-@pytest.mark.parametrize("bad_rate", [0, -24000])
-def test_a_rate_that_cannot_be_a_rate_is_refused(bad_rate):
+@pytest.mark.parametrize("bad_rate", [0, -24000, 1, 7999, 192001])
+def test_a_rate_outside_what_audio_uses_is_refused(bad_rate):
     with pytest.raises(ValueError):
         PcmFramer(bad_rate)
+
+
+@pytest.mark.parametrize("rate", [8000, 192000])
+def test_the_rates_at_the_edges_of_the_range_are_accepted(rate):
+    framer = PcmFramer(rate)
+    assert framer.push(bytes(rate // 25)) is not None
 
 
 @pytest.mark.parametrize("rate", COMMON_RATES)

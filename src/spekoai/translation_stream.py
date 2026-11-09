@@ -13,12 +13,14 @@ silence keep working however slowly your code reads events.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import itertools
 import json
 import logging
 from collections import deque
 from collections.abc import Coroutine
 from typing import Any, Optional
+from urllib.parse import urlsplit
 
 from websockets.asyncio.client import ClientConnection
 from websockets.asyncio.client import connect as ws_connect
@@ -63,6 +65,15 @@ _RETRY_MAX_DELAY_SECONDS = 2.0
 # sending of frames while it is being cut up.
 _SEND_SLICE_BYTES = 9600
 _MAX_PING_ID_LENGTH = 64
+# How much unread event data may wait in memory: about 5 minutes of audio. Each event
+# counts as its size on the wire plus this overhead, so small ones can't pile up either.
+_MAX_BUFFERED_BYTES = 32 * 1024 * 1024
+_EVENT_OVERHEAD_BYTES = 1024
+# Speko caps finishing at 25 seconds. The rest is room for the network.
+_END_TIMEOUT_SECONDS = 30.0
+# The contract allows one socket plus the old one while it drains, for up to 10 seconds.
+# Moves in quick succession can hold a few more, but not this many.
+_MAX_OPEN_SOCKETS = 8
 
 # The websockets debug log prints handshake headers, and the credential is one of
 # them. This logger never enables debug, whatever the application's root level is.
@@ -82,6 +93,29 @@ _EVENT_MODELS: dict[str, Any] = {
     "error": TranslationErrorEvent,
     "ended": TranslationEnded,
 }
+
+
+class _NoRedirectConnect(ws_connect):
+    """The contract has no redirects, and following one would offer the credential to
+    whatever host is in ``Location``."""
+
+    def process_redirect(self, exc: Exception) -> Exception:
+        return exc
+
+
+def is_loopback(host: Optional[str]) -> bool:
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host or "").is_loopback
+    except ValueError:
+        return False
+
+
+def _check_stream_url(url: str) -> None:
+    parts = urlsplit(url)
+    if parts.scheme != "wss" and not (parts.scheme == "ws" and is_loopback(parts.hostname)):
+        raise ValueError("stream_url must use wss://. ws:// is allowed only for a loopback host.")
 
 
 def _parse_event(message: str) -> Optional[TranslationStreamEvent]:
@@ -112,12 +146,19 @@ class AsyncTranslationStream:
     Iterate until the stream stops. The last event is ``ended``, or ``error`` when
     Speko refused the credential. A lost connection raises
     ``SpekoTranslationConnectionError``: the session has ended, so create a new one.
+    So does no ``ended`` within 30 seconds of ``finish`` going out (code
+    ``end_timeout``), and the session is canceled.
 
-    Events wait in memory until you read them, so keep reading: nothing limits how
-    many can pile up.
+    Events wait in memory until you read them, and this helper always reads the socket,
+    so Speko's own ``client_too_slow`` limit never fires for an app that stops iterating.
+    About 5 minutes of audio (32 MiB) can wait. Past that the session is canceled, and
+    after the events already waiting you get ``SpekoTranslationConnectionError`` with
+    code ``client_too_slow``.
 
     Leaving the block ends a session that is still running, with ``cancel``. To get
-    the rest of the translation, call ``finish()`` and iterate until ``ended``.
+    the rest of the translation, call ``finish()`` and iterate until ``ended``. During
+    a move this waits for the new connection, up to 30 seconds, because Speko ignores
+    ``cancel`` on the old one.
 
     An app with no API key can create this directly, with the ``client_secret`` and
     ``stream_url`` your server passes it.
@@ -131,6 +172,7 @@ class AsyncTranslationStream:
         sample_rate: int = STREAM_SAMPLE_RATE,
         connect_timeout: float = 60.0,
     ) -> None:
+        _check_stream_url(stream_url)
         self._client_secret = client_secret
         self._stream_url = stream_url
         self._connect_timeout = connect_timeout
@@ -143,7 +185,12 @@ class AsyncTranslationStream:
         # True once the stream is over: no more events will be queued after the end.
         self._done = False
         self._moving = False
+        self._move_task: Optional[asyncio.Task[None]] = None
         self._error_seen = False
+        # True once Speko has ended the session or its socket is gone: nothing to cancel.
+        self._session_over = False
+        self._stopping: Optional[asyncio.Task[None]] = None
+        self._buffered_bytes = 0
         # Audio waiting for its turn, as 960-byte PCM. It gets numbered when sent.
         self._pending: deque[bytes] = deque()
         # Frames to send first on a new connection, as (sequence, frame).
@@ -154,6 +201,7 @@ class AsyncTranslationStream:
         # "finish" or "cancel" once asked for, and whether this socket has been told.
         self._closing: Optional[str] = None
         self._closing_sent = False
+        self._end_deadline = 0.0
 
     async def __aenter__(self) -> AsyncTranslationStream:
         # Created here so they belong to the running loop on every Python version.
@@ -175,12 +223,13 @@ class AsyncTranslationStream:
 
     async def __anext__(self) -> TranslationStreamEvent:
         self._check_entered()
-        item = await self._events.get()
+        size, item = await self._events.get()
+        self._buffered_bytes -= size
         if isinstance(item, SpekoTranslationConnectionError):
             raise item
         if item is _END_OF_STREAM:
             # Stay at the end for anyone who iterates again.
-            self._events.put_nowait(_END_OF_STREAM)
+            self._events.put_nowait((0, _END_OF_STREAM))
             raise StopAsyncIteration
         return item
 
@@ -242,29 +291,38 @@ class AsyncTranslationStream:
         if self._closed or not self._entered:
             return
         self._closed = True
-        was_running = not self._done
         self._end_stream()
-        if was_running:
-            assert self._ws is not None
-            try:
-                await asyncio.wait_for(self._ws.send(_control("cancel")), _CANCEL_TIMEOUT_SECONDS)
-            except (ConnectionClosed, OSError, asyncio.TimeoutError):
-                pass
-        tasks = list(self._tasks)
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        await asyncio.gather(*(ws.close() for ws in self._sockets), return_exceptions=True)
-        self._sockets.clear()
+        try:
+            await asyncio.wait({self._stop_session()})
+        finally:
+            tasks = list(self._tasks)
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            await asyncio.gather(*(ws.close() for ws in self._sockets), return_exceptions=True)
+            self._sockets.clear()
 
     def _check_entered(self) -> None:
         if not self._entered:
             raise RuntimeError("Use the stream inside 'async with' before calling this.")
 
-    def _spawn(self, work: Coroutine[Any, Any, None]) -> None:
+    def _spawn(self, work: Coroutine[Any, Any, None]) -> asyncio.Task[None]:
         task = asyncio.create_task(work)
         self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
+        task.add_done_callback(self._on_task_done)
+        return task
+
+    def _on_task_done(self, task: asyncio.Task[None]) -> None:
+        self._tasks.discard(task)
+        if task.cancelled() or task.exception() is None:
+            return
+        # Deliberately not chained or quoted: the exception can hold a credential.
+        self._fail(
+            SpekoTranslationConnectionError(
+                "The translation stream failed on a message it could not handle.",
+                "protocol_error",
+            )
+        )
 
     async def _open(self, credential: str, budget: float, failure_code: str) -> ClientConnection:
         """Open a socket. A credential is spent only when the socket opens, so a failed
@@ -275,7 +333,7 @@ class AsyncTranslationStream:
         while True:
             remaining = deadline - loop.time()
             try:
-                ws = await ws_connect(
+                ws = await _NoRedirectConnect(
                     self._stream_url,
                     subprotocols=[_SUBPROTOCOL, credential],
                     open_timeout=max(min(remaining, _OPEN_TIMEOUT_SECONDS), 0.05),
@@ -301,7 +359,7 @@ class AsyncTranslationStream:
     # --- Writing -----------------------------------------------------------------
 
     async def _pump(self) -> None:
-        """The only task that writes to a socket. A frame leaves every 20 ms: queued
+        """The only task that writes while the stream runs. A frame leaves every 20 ms: queued
         audio if there is any, otherwise silence. Sequence numbers are given out here,
         so silence and audio share one numbering."""
         loop = asyncio.get_running_loop()
@@ -318,8 +376,7 @@ class AsyncTranslationStream:
                 elif self._controls:
                     await ws.send(self._controls.popleft())
                 elif self._closing == "cancel" and not self._closing_sent:
-                    self._closing_sent = True
-                    await ws.send(_control("cancel"))
+                    await self._send_closing(ws)
                 elif self._pending:
                     now = loop.time()
                     if now < next_tick:
@@ -328,11 +385,16 @@ class AsyncTranslationStream:
                         next_tick += _FRAME_SECONDS
                         await self._send_new_frame(ws, self._pending.popleft())
                 elif self._closing is not None:
-                    if self._closing_sent:
-                        await self._idle(None)
+                    if not self._closing_sent:
+                        await self._send_closing(ws)
+                    elif loop.time() < self._end_deadline:
+                        await self._idle(self._end_deadline - loop.time())
                     else:
-                        self._closing_sent = True
-                        await ws.send(_control(self._closing))
+                        self._fail(
+                            SpekoTranslationConnectionError(
+                                "Speko did not end the stream in time.", "end_timeout"
+                            )
+                        )
                 else:
                     now = loop.time()
                     behind = now - next_tick
@@ -358,6 +420,12 @@ class AsyncTranslationStream:
         except asyncio.TimeoutError:
             pass
 
+    async def _send_closing(self, ws: ClientConnection) -> None:
+        assert self._closing is not None
+        self._closing_sent = True
+        self._end_deadline = asyncio.get_running_loop().time() + _END_TIMEOUT_SECONDS
+        await ws.send(_control(self._closing))
+
     async def _send_new_frame(self, ws: ClientConnection, pcm: bytes) -> None:
         sequence = self._sequence
         self._sequence += 1
@@ -374,37 +442,41 @@ class AsyncTranslationStream:
     async def _read(self, ws: ClientConnection) -> None:
         try:
             async for message in ws:
-                self._on_message(message)
                 if self._done:
                     return
+                self._on_message(ws, message)
         except ConnectionClosed:
             pass
-        except ValueError:
-            # Deliberately not chained or quoted: the message can hold a resume token.
-            self._end_stream(
+        self._on_socket_closed(ws)
+
+    def _on_message(self, ws: ClientConnection, message: Any) -> None:
+        size = len(message) + _EVENT_OVERHEAD_BYTES
+        if self._buffered_bytes + size > _MAX_BUFFERED_BYTES:
+            self._fail(
                 SpekoTranslationConnectionError(
-                    "The translation server sent a malformed message.", "protocol_error"
+                    "Events went unread for too long, so the session was canceled. "
+                    "Keep iterating, and create a new session to continue.",
+                    "client_too_slow",
                 )
             )
             return
-        self._on_socket_closed(ws)
-
-    def _on_message(self, message: Any) -> None:
         if not isinstance(message, str):
             sequence, sample_offset, pcm = decode_frame(message)
-            self._events.put_nowait(
-                TranslationAudio(pcm=pcm, sequence=sequence, sample_offset=sample_offset)
-            )
-            return
-        event = _parse_event(message)
+            event: Any = TranslationAudio(pcm=pcm, sequence=sequence, sample_offset=sample_offset)
+        else:
+            event = _parse_event(message)
         if event is None:
             return
-        self._events.put_nowait(event)
+        if isinstance(event, TranslationReconnect) and (self._moving or ws is not self._ws):
+            return  # One move at a time, and only the socket in use can ask for one.
+        self._buffered_bytes += size
+        self._events.put_nowait((size, event))
         if isinstance(event, TranslationReconnect):
             self._begin_move(event)
         elif isinstance(event, TranslationErrorEvent):
             self._error_seen = True
         elif isinstance(event, TranslationEnded):
+            self._session_over = True
             self._end_stream()
 
     def _on_socket_closed(self, ws: ClientConnection) -> None:
@@ -412,6 +484,7 @@ class AsyncTranslationStream:
         # After `reconnect`, the old socket closing or dropping doesn't end the session.
         if self._moving or ws is not self._ws:
             return
+        self._session_over = True
         if self._error_seen:
             # Close 4401 without `ended`: the error event already said why.
             self._end_stream()
@@ -430,12 +503,43 @@ class AsyncTranslationStream:
             return
         self._done = True
         if error is not None:
-            self._events.put_nowait(error)
-        self._events.put_nowait(_END_OF_STREAM)
+            self._events.put_nowait((0, error))
+        self._events.put_nowait((0, _END_OF_STREAM))
+
+    def _fail(self, error: SpekoTranslationConnectionError) -> None:
+        """End the stream from this side. The session may still be running on the server,
+        so tell it to stop now rather than when the app leaves the block."""
+        self._end_stream(error)
+        self._stop_session()
+
+    def _stop_session(self) -> asyncio.Task[None]:
+        if self._stopping is None:
+            self._stopping = self._spawn(self._cancel_on_server())
+        return self._stopping
+
+    async def _cancel_on_server(self) -> None:
+        # Speko ignores controls on the old socket, so a move has to finish first. Its
+        # budget bounds this wait.
+        if self._move_task is not None:
+            await asyncio.wait({self._move_task})
+        if self._session_over or self._moving:
+            return
+        assert self._ws is not None
+        try:
+            await asyncio.wait_for(self._ws.send(_control("cancel")), _CANCEL_TIMEOUT_SECONDS)
+        except (ConnectionClosed, OSError, asyncio.TimeoutError):
+            pass
 
     # --- Moving to a new connection ----------------------------------------------
 
     def _begin_move(self, event: TranslationReconnect) -> None:
+        if len(self._sockets) >= _MAX_OPEN_SOCKETS:
+            self._fail(
+                SpekoTranslationConnectionError(
+                    "The translation server asked for too many connections.", "protocol_error"
+                )
+            )
+            return
         self._moving = True
         self._connected.clear()
         # Everything from next_sequence on goes out again, including what the old socket
@@ -447,13 +551,14 @@ class AsyncTranslationStream:
         # Speko ignores controls that reach the old socket, so this one goes out again,
         # after the frames above.
         self._closing_sent = False
-        self._spawn(self._move(event.resume_token))
+        self._move_task = self._spawn(self._move(event.resume_token))
         self._wake.set()
 
     async def _move(self, resume_token: str) -> None:
         try:
             ws = await self._open(resume_token, _RESUME_SECONDS, "resume_failed")
         except SpekoTranslationConnectionError as error:
+            self._session_over = True
             self._end_stream(error)
             return
         self._ws = ws

@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Translation API v1 under `translation`. `sessions.create`, `retrieve` and `end` work on both clients, with an automatic `Idempotency-Key` on POSTs and typed errors (`SpekoTranslationError` and its subclasses) that carry `type`, `code`, `doc_url`, `param` and `request_id`.
-- `AsyncSpeko.translation.connect(client_secret)` opens the stream. It frames and resamples your PCM, sends in real time with silence in the gaps, and moves to a new connection when Speko asks. `async for event in stream` yields audio, captions, lag and the other events.
+- `AsyncSpeko.translation.connect(client_secret)` opens the stream. It frames and resamples your PCM, sends in real time with silence in the gaps, and moves to a new connection when Speko asks. `async for event in stream` yields audio, captions, lag and the other events. Plain `ws://` and `http://` work only for loopback hosts, and redirects are not followed.
 - `examples/translate_wav.py` translates a WAV file to a WAV file and a transcript.
 
 ## [0.2.3] - 2026-10-29

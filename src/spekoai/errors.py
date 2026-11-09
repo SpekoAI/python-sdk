@@ -34,9 +34,13 @@ class SpekoRateLimitError(SpekoApiError):
         self.retry_after = retry_after
 
 
+_TRANSLATION_ERRORS_PAGE = "https://docs.speko.dev/translation/errors"
+
+
 class SpekoTranslationError(SpekoApiError):
     """An error from the Translation API. Branch on ``type``; ``code`` names the
-    specific error, and new codes can appear within an API version."""
+    specific error, and new codes can appear within an API version. ``doc_url`` is the
+    server's link for this code, or the errors page when the error started in the SDK."""
 
     def __init__(
         self,
@@ -49,10 +53,12 @@ class SpekoTranslationError(SpekoApiError):
         doc_url: Optional[str] = None,
         request_id: Optional[str] = None,
     ) -> None:
-        super().__init__(message, status, code)
+        # Named, not super(): two subclasses also inherit SpekoAuthError or
+        # SpekoRateLimitError, whose constructors take other arguments.
+        SpekoApiError.__init__(self, message, status, code)
         self.type = type
         self.param = param
-        self.doc_url = doc_url
+        self.doc_url = doc_url or _TRANSLATION_ERRORS_PAGE
         self.request_id = request_id
 
 
@@ -60,7 +66,7 @@ class SpekoTranslationInvalidRequestError(SpekoTranslationError):
     """``invalid_request_error``: the request is wrong. Fix the client."""
 
 
-class SpekoTranslationAuthError(SpekoTranslationError):
+class SpekoTranslationAuthError(SpekoTranslationError, SpekoAuthError):
     """``authentication_error``: the credential is missing, wrong or expired."""
 
 
@@ -68,8 +74,10 @@ class SpekoTranslationPermissionError(SpekoTranslationError):
     """``permission_error``: the credential is valid but may not do this."""
 
 
-class SpekoTranslationRateLimitError(SpekoTranslationError):
+class SpekoTranslationRateLimitError(SpekoTranslationError, SpekoRateLimitError):
     """``rate_limit_error``: too many realtime sessions at once. Retry when one ends."""
+
+    retry_after: Optional[int] = None
 
 
 class SpekoTranslationBalanceError(SpekoTranslationError):
@@ -81,10 +89,10 @@ class SpekoTranslationServerError(SpekoTranslationError):
 
 
 class SpekoTranslationConnectionError(SpekoTranslationError):
-    """The stream's socket could not open or was lost. Raised by the SDK, not sent
-    by the server, so ``type`` is ``connection_error``, ``status`` is 0 and there is
-    no ``doc_url``. ``code`` is ``connect_failed``, ``resume_failed``,
-    ``connection_lost``, ``protocol_error`` or ``stream_closed``."""
+    """The network or the stream failed. Raised by the SDK, not sent by the server, so
+    ``type`` is ``connection_error`` and ``status`` is 0. ``code`` is ``network_error``,
+    ``connect_failed``, ``resume_failed``, ``connection_lost``, ``protocol_error``,
+    ``stream_closed``, ``end_timeout`` or ``client_too_slow``."""
 
     def __init__(self, message: str, code: str, *, close_code: Optional[int] = None) -> None:
         super().__init__(message, 0, code, type="connection_error")

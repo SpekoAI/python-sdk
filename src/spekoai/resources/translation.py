@@ -9,14 +9,19 @@ from __future__ import annotations
 import asyncio
 import time
 from typing import Any, Optional
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import httpx
 
 from spekoai._http import path_id
-from spekoai.errors import translation_error_from_body
+from spekoai.errors import (
+    SpekoTranslationConnectionError,
+    SpekoTranslationServerError,
+    translation_error_from_body,
+)
 from spekoai.models import TranslationSession
-from spekoai.translation_stream import AsyncTranslationStream
+from spekoai.translation_stream import AsyncTranslationStream, is_loopback
 
 DEFAULT_TRANSLATION_BASE_URL = "https://translate.speko.dev"
 TRANSLATION_API_VERSION = "2026-11-08"
@@ -31,7 +36,7 @@ _END_TIMEOUT_SECONDS = 30.0
 def _error_code(resp: httpx.Response) -> Optional[str]:
     try:
         return resp.json()["error"]["code"]
-    except (ValueError, KeyError, TypeError):
+    except (ValueError, KeyError, TypeError, RecursionError):
         return None
 
 
@@ -45,7 +50,7 @@ def _session_from(resp: httpx.Response) -> TranslationSession:
     if resp.status_code >= 400:
         try:
             body: Any = resp.json()
-        except ValueError:
+        except (ValueError, RecursionError):
             body = None
         raise translation_error_from_body(
             body,
@@ -53,7 +58,24 @@ def _session_from(resp: httpx.Response) -> TranslationSession:
             fallback_message=resp.text or resp.reason_phrase,
             request_id=resp.headers.get("Request-Id"),
         )
-    return TranslationSession.model_validate(resp.json())
+    try:
+        return TranslationSession.model_validate(resp.json())
+    except (ValueError, RecursionError):
+        pass
+    # Raised out here so that nothing chains to the validation error: it quotes the body,
+    # and the body holds the client secret.
+    raise SpekoTranslationServerError(
+        "The Translation API sent a response that is not a session.",
+        resp.status_code,
+        "invalid_response",
+        request_id=resp.headers.get("Request-Id"),
+    )
+
+
+def _network_error() -> SpekoTranslationConnectionError:
+    return SpekoTranslationConnectionError(
+        "Could not reach the Translation API after three attempts.", "network_error"
+    )
 
 
 def _headers(idempotency_key: Optional[str] = None) -> dict[str, str]:
@@ -80,6 +102,12 @@ def _create_body(
 
 class _SessionUrls:
     def __init__(self, base_url: str) -> None:
+        parts = urlsplit(base_url)
+        if parts.scheme != "https" and not (parts.scheme == "http" and is_loopback(parts.hostname)):
+            raise ValueError(
+                "translation_base_url must use https://. "
+                "http:// is allowed only for a loopback host."
+            )
         self.collection = f"{base_url.rstrip('/')}/v1/translation/sessions"
 
     def one(self, session_id: str) -> str:
@@ -104,7 +132,10 @@ class TranslationSessionsResource:
             if not _is_retryable(resp):
                 return resp
             time.sleep(delay)
-        return self._client.request(method, url, **kwargs)
+        try:
+            return self._client.request(method, url, **kwargs)
+        except httpx.TransportError as error:
+            raise _network_error() from error
 
     def create(
         self,
@@ -169,7 +200,10 @@ class AsyncTranslationSessionsResource:
             if not _is_retryable(resp):
                 return resp
             await asyncio.sleep(delay)
-        return await self._client.request(method, url, **kwargs)
+        try:
+            return await self._client.request(method, url, **kwargs)
+        except httpx.TransportError as error:
+            raise _network_error() from error
 
     async def create(
         self,
@@ -241,9 +275,9 @@ class AsyncTranslationResource:
 
         ``stream_url`` is needed only for a secret that this client didn't create.
         Client secrets are opaque, so the URL can't be worked out from one.
-        ``sample_rate`` is the rate of the PCM you'll send. Audio you receive is always
-        24 kHz. ``connect_timeout`` limits how long a failed open is retried. A secret
-        lasts 60 seconds, so there is no reason to raise it.
+        ``sample_rate`` is the rate of the PCM you'll send, 8000 to 192000 Hz. Audio you
+        receive is always 24 kHz. ``connect_timeout`` limits how long a failed open is
+        retried. A secret lasts 60 seconds, so there is no reason to raise it.
         """
         url = stream_url or self.sessions._stream_url_of(client_secret)
         if url is None:

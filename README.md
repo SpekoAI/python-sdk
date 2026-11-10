@@ -137,6 +137,48 @@ to finish. Explicit shutdown can use `await speko.close(realtime_timeout=5.0)`.
 Session close never waits for telemetry. Report delivery is best effort and is
 not guaranteed after the deadline or event-loop termination.
 
+## Live translation
+
+Translate a live audio stream, with captions. Your server creates a session, and the stream helper handles the frame format, resampling to 24 kHz, continuous silence, and moving to a new connection when Speko asks. The helper is async-only; `sessions` also works on the sync client.
+
+```python
+import asyncio
+import os
+
+from spekoai import AsyncSpeko
+
+pcm_bytes = bytes(32000)  # One second of silence. Use your own 16-bit mono PCM at 16 kHz.
+
+
+def play(pcm):
+    pass  # 20 ms of 24 kHz mono PCM. Send it to a speaker or a file.
+
+
+def show(item_id, text):
+    print(item_id, text)
+
+
+async def main():
+    async with AsyncSpeko(api_key=os.environ["SPEKO_API_KEY"]) as client:
+        session = await client.translation.sessions.create(target_language="ru", test=True)
+
+        async with client.translation.connect(session.client_secret, sample_rate=16000) as stream:
+            await stream.send(pcm_bytes)  # Any chunk size. It goes out in real time.
+            await stream.finish()
+            async for event in stream:
+                if event.type == "audio":
+                    play(event.pcm)
+                elif event.type == "transcript.translated":
+                    show(event.item_id, event.text)
+                elif event.type == "error":
+                    print(event.error.code, event.error.doc_url)
+
+
+asyncio.run(main())
+```
+
+`test=True` makes this a free session that sends your audio back with scripted captions. Remove it to translate for real. [`examples/translate_wav.py`](examples/translate_wav.py) translates a WAV file to a WAV file and a transcript.
+
 ## Documentation
 
 Full API reference and guides: <https://docs.speko.dev/sdk-python/overview>

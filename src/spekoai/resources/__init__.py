@@ -19,6 +19,12 @@ from spekoai.resources.phone_numbers import (
 )
 from spekoai.resources.sessions import AsyncSessionsResource, SessionsResource
 from spekoai.resources.sms import AsyncSmsResource, SmsResource
+from spekoai.resources.translation import (
+    AsyncTranslationResource,
+    AsyncTranslationSessionsResource,
+    TranslationResource,
+    TranslationSessionsResource,
+)
 from spekoai.resources.usage import AsyncUsageResource, UsageResource
 from spekoai.resources.voice import AsyncVoiceResource, VoiceResource
 from spekoai.resources.voices import AsyncVoicesResource, VoicesResource
@@ -30,6 +36,10 @@ from spekoai.resources.webhooks import (
 )
 
 __all__ = [
+    "AsyncTranslationResource",
+    "AsyncTranslationSessionsResource",
+    "TranslationResource",
+    "TranslationSessionsResource",
     "AgentsResource",
     "AgentToolsResource",
     "AsyncAgentsResource",

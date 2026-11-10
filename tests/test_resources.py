@@ -490,12 +490,29 @@ def test_voices_carry_paxa_models(speko):
                     "latencyStatus": "complete",
                     "conversationalLatencyMs": 500,
                     "toolCalls": [{"name": "end_call", "args": "{}"}],
-                }
+                },
+                {
+                    "id": "t_2",
+                    "index": 1,
+                    "source": "user",
+                    "text": "Is Friday fine? Friday is fine.",
+                    "startedAt": "2026-07-01T00:00:02.000Z",
+                    "toolCalls": [],
+                    "speaker": "S1",
+                    "speakerSegments": [
+                        {"speaker": "S1", "text": "Is Friday fine?"},
+                        {"speaker": "S2", "text": "Friday is fine."},
+                    ],
+                },
             ]
         }
     )
     transcript = speko.sessions.transcript("sess_1")
     assert transcript.entries[0].tool_calls[0].name == "end_call"
+    assert transcript.entries[0].speaker is None
+    assert transcript.entries[0].speaker_segments == []
+    assert transcript.entries[1].speaker == "S1"
+    assert [s.speaker for s in transcript.entries[1].speaker_segments] == ["S1", "S2"]
     assert transcript.entries[0].conversational_latency_ms == 500
 
 

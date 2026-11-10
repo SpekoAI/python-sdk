@@ -677,6 +677,11 @@ class SessionToolCall(_SpekoModel):
     args: str
 
 
+class SessionSpeakerSegment(_SpekoModel):
+    speaker: str
+    text: str
+
+
 class SessionTranscriptEntry(_SpekoModel):
     """One turn from GET /v1/sessions/:id/transcript — the lightweight live
     transcript poll. Note the camelCase wire keys: this endpoint's
@@ -699,6 +704,12 @@ class SessionTranscriptEntry(_SpekoModel):
     conversational_latency_ms: Optional[float] = None
     # Tool calls the agent made on this turn (empty when none).
     tool_calls: list[SessionToolCall] = Field(default_factory=list)
+    # Who spoke a caller turn when the session ran with
+    # ``sttOptions.diarization``: "S1", "S2", … in the order the voices were
+    # first heard. None on agent/system turns and without the option.
+    speaker: Optional[str] = None
+    # The turn split by voice, when it holds more than one (empty otherwise).
+    speaker_segments: list[SessionSpeakerSegment] = Field(default_factory=list)
 
 
 class SessionTranscript(_SpekoModel):

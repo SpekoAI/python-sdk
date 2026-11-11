@@ -4,7 +4,7 @@ import httpx
 import pytest
 import respx
 
-from spekoai import SpekoAuthError, SpekoRateLimitError
+from spekoai import SpekoApiError, SpekoAuthError, SpekoRateLimitError
 from tests.conftest import BASE
 
 AGENT = {
@@ -280,6 +280,54 @@ def test_calls_snake_case_payloads(speko):
     joined = speko.calls.web_join("sess_1", {"display_name": "Reviewer"})
     assert json.loads(join_route.calls.last.request.content) == {"displayName": "Reviewer"}
     assert joined.room_name == "room"
+
+
+LISTEN_CREDENTIALS = {
+    "token": "tok",
+    "url": "wss://media.test",
+    "identity": "listen-7f3a",
+    "roomName": "room",
+    "expiresAt": "2026-07-01T00:01:00.000Z",
+}
+
+
+@respx.mock
+def test_calls_listen(speko):
+    route = respx.post(f"{BASE}/v1/calls/sess%2F1/listen").respond(json=LISTEN_CREDENTIALS)
+
+    listen = speko.calls.listen("sess/1")
+
+    assert route.call_count == 1
+    assert listen.token == "tok"
+    assert listen.url == "wss://media.test"
+    assert listen.identity == "listen-7f3a"
+    assert listen.room_name == "room"
+    assert listen.expires_at == "2026-07-01T00:01:00.000Z"
+
+
+@respx.mock
+def test_calls_listen_raises_the_listener_limit_code(speko):
+    respx.post(f"{BASE}/v1/calls/sess_1/listen").respond(
+        status_code=409,
+        json={"error": "Too many listeners", "code": "LISTENER_LIMIT_REACHED"},
+    )
+
+    with pytest.raises(SpekoApiError) as exc:
+        speko.calls.listen("sess_1")
+
+    assert exc.value.status == 409
+    assert exc.value.code == "LISTENER_LIMIT_REACHED"
+
+
+@respx.mock
+async def test_async_calls_listen(aspeko):
+    route = respx.post(f"{BASE}/v1/calls/sess%2F1/listen").respond(json=LISTEN_CREDENTIALS)
+
+    listen = await aspeko.calls.listen("sess/1")
+
+    assert route.call_count == 1
+    assert listen.identity == "listen-7f3a"
+    assert listen.room_name == "room"
 
 
 @respx.mock

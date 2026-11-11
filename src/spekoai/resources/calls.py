@@ -11,6 +11,7 @@ from spekoai.models import (
     BlindTransferParams,
     CallDetail,
     CallEvent,
+    CallListenCredentials,
     CallRecording,
     CallReport,
     CallTransfer,
@@ -82,6 +83,26 @@ class CallsResource:
         resp = self._client.post(f"/v1/calls/{path_id(call_id)}/web-join", json=body)
         raise_for_status(resp)
         return WebJoinResult.model_validate(resp.json())
+
+    def listen(self, call_id: str) -> CallListenCredentials:
+        """Mint a credential that lets one browser hear THIS live call
+        without taking part in it. Pass ``token`` and ``url`` to
+        ``@spekoai/client``'s ``CallListener.connect``.
+
+        The token can only join the call and receive its audio. It cannot
+        publish audio or data, the people on the call cannot see the listener,
+        and the agent keeps talking (unlike ``web_join``, which mutes it). The
+        token is accepted for 60 seconds, so mint one per click and never
+        store it. The server removes every listener when the call ends.
+
+        Raises ``SpekoApiError`` with ``code`` ``NOT_FOUND`` (404),
+        ``CALL_NOT_LIVE`` (409, the call ended), ``LISTEN_NOT_SUPPORTED``
+        (409, this call type has no audio to join), ``LISTENER_LIMIT_REACHED``
+        (409, five listeners per call) or ``LISTEN_DISABLED`` (503).
+        """
+        resp = self._client.post(f"/v1/calls/{path_id(call_id)}/listen", json={})
+        raise_for_status(resp)
+        return CallListenCredentials.model_validate(resp.json())
 
     def end(self, call_id: str) -> EndCallResult:
         """End a live call now (kill switch): tears the room down, which
@@ -179,6 +200,11 @@ class AsyncCallsResource:
         resp = await self._client.post(f"/v1/calls/{path_id(call_id)}/web-join", json=body)
         raise_for_status(resp)
         return WebJoinResult.model_validate(resp.json())
+
+    async def listen(self, call_id: str) -> CallListenCredentials:
+        resp = await self._client.post(f"/v1/calls/{path_id(call_id)}/listen", json={})
+        raise_for_status(resp)
+        return CallListenCredentials.model_validate(resp.json())
 
     async def end(self, call_id: str) -> EndCallResult:
         resp = await self._client.post(f"/v1/calls/{path_id(call_id)}/end", json={})

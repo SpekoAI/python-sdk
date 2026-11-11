@@ -52,6 +52,7 @@ from spekoai.models import (
     CallCostLine,
     CallDetail,
     CallEvent,
+    CallListenCredentials,
     CallRecording,
     CallReport,
     CallReportVoicemail,
@@ -258,6 +259,7 @@ __all__ = [
     "CallCostLine",
     "CallDetail",
     "CallEvent",
+    "CallListenCredentials",
     "CallRecording",
     "CallReport",
     "CallReportVoicemail",
@@ -410,4 +412,4 @@ __all__ = [
     "WorkspaceWebhookEventType",
 ]
 
-__version__ = "0.2.3"
+__version__ = "0.2.4"

@@ -1627,6 +1627,12 @@ class WebJoinResult(_SpekoModel):
     expires_at: str
 
 
+class CallListenCredentials(WebJoinResult):
+    """What ``calls.listen()`` returns: a receive-only credential for one live
+    call. ``identity`` starts with ``listen-``. ``expires_at`` is 60 seconds
+    after the mint and limits new connections only."""
+
+
 class SendCallMessageParams(_SpekoModel):
     # The update for the caller, 1-4000 characters.
     text: str

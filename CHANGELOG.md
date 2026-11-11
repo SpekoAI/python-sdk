@@ -5,6 +5,12 @@ All notable changes to `spekoai` (Python SDK) will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-11-11
+
+### Added
+
+- `calls.listen(call_id)` on `Speko` and `AsyncSpeko`. It mints a receive-only credential for one live call. Pass `token` and `url` to `CallListener` from `@spekoai/client` to play the call in a browser. The token cannot publish audio or data, and the server accepts it for 60 seconds. `CallListenCredentials` is exported.
+
 ## [0.2.3] - 2026-10-29
 
 ### Added

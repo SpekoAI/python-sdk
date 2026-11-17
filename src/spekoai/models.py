@@ -714,6 +714,13 @@ class SessionTranscriptEntry(_SpekoModel):
 
 class SessionTranscript(_SpekoModel):
     entries: list[SessionTranscriptEntry]
+    # False when the workspace keeps no transcripts: entries are returned only
+    # while the call is live and are empty once it ends.
+    transcript_stored: bool = True
+    # True when the workspace's transcript retention period removed the words.
+    transcript_expired: bool = False
+    # Each turn's timing and latency with no text, when no transcript is kept.
+    timings: list[SessionTranscriptEntry] = Field(default_factory=list)
 
 
 class SessionStreamStatus(_SpekoModel):

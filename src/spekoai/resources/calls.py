@@ -70,11 +70,13 @@ class CallsResource:
         return CallRecording.model_validate(resp.json())
 
     def web_join(self, call_id: str, params: WebJoinInput = None) -> WebJoinResult:
-        """Browser bridge-in: mint a short-lived token that joins THIS live
-        call's room from a web client (pass ``token``/``url`` to
-        ``@spekoai/client``). Once the browser publishes audio the platform
-        bridges it to the phone leg and mutes the agent; when the browser
-        leaves, the agent resumes.
+        """Take a live call over from the browser: mint a short-lived token
+        for ``CallTakeover.connect({ url, token })`` from ``@spekoai/client``.
+        Once the browser's microphone reaches the call, the caller hears it
+        and the agent goes silent; when the browser leaves, the agent takes
+        the call back. A 409 ``CALL_NOT_ANSWERED`` means an outbound call is
+        still ringing, ``WEB_JOIN_UNSUPPORTED`` that the call has no LiveKit
+        room; 429 ``RATE_LIMITED`` allows 10 a minute for a call.
 
         Mint at click time — the token is short-TTL and a 409 means the call
         is no longer live. Concurrent/repeat joins are allowed.

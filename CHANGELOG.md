@@ -5,6 +5,12 @@ All notable changes to `spekoai` (Python SDK) will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-11-18
+
+### Added
+
+- `calls.send_message()` takes `mode="instruct"` to steer the agent on a live call. The agent follows the instruction from its next reply until the call ends, never speaks it and never mentions it. A later instruction wins where two conflict. An instruction is at most 1000 characters, and a call keeps at most 20. `CallMessageMode` is exported.
+
 ## [0.2.4] - 2026-11-11
 
 ### Added

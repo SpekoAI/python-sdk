@@ -1640,19 +1640,25 @@ class CallListenCredentials(WebJoinResult):
     after the mint and limits new connections only."""
 
 
+CallMessageMode = Literal["respond", "context", "instruct"]
+
+
 class SendCallMessageParams(_SpekoModel):
-    # The update for the caller, 1-4000 characters.
+    # 1-4000 characters; an 'instruct' message is at most 1000.
     text: str
     # 'respond' (default): the agent tells the caller at the next gap in the
-    # conversation. 'context': added to the agent's context only.
-    mode: Optional[Literal["respond", "context"]] = None
+    # conversation. 'context': added to the agent's context only. 'instruct':
+    # steer the agent; it follows the instruction for the rest of the call,
+    # never speaks it, and a later one wins where two conflict (at most 20
+    # per call).
+    mode: Optional[CallMessageMode] = None
 
 
 class SendCallMessageResult(_SpekoSnakeModel):
     ok: Literal[True]
     status: Literal["sent"]
     message_id: str
-    mode: Literal["respond", "context"]
+    mode: CallMessageMode
 
 
 class EndCallResult(_SpekoSnakeModel):

@@ -116,7 +116,10 @@ class CallsResource:
         """Push an update from your backend into a live call. In ``respond``
         mode (default) the agent tells the caller at the next gap in the
         conversation; in ``context`` mode it only adds the text to the
-        agent's context. A 409 means the call is no longer live."""
+        agent's context. In ``instruct`` mode the text steers the agent: it
+        follows it for the rest of the call without saying it. A 409 means
+        the call is no longer live (``CALL_NOT_LIVE``) or cannot take
+        messages (``MESSAGES_UNSUPPORTED``)."""
         resp = self._client.post(
             f"/v1/calls/{path_id(call_id)}/messages",
             json=dump_params(params, SendCallMessageParams),

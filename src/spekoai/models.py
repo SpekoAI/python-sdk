@@ -611,6 +611,16 @@ class TelephonyOptions(_SpekoModel):
     dtmf: Optional[str] = None
 
 
+class VoiceDialHandoff(_SpekoModel):
+    """The user's own phone, for a call placed on their behalf."""
+
+    # E.164. The agent rings it and connects the user when the other side
+    # asks for the account holder (a warm transfer).
+    to: str
+    # How the agent refers to the user, e.g. their first name.
+    name: Optional[str] = None
+
+
 class VoiceDialParams(_SpekoModel):
     """Parameters for ``speko.voice.dial`` — POST /v1/sessions/phone."""
 
@@ -649,6 +659,9 @@ class VoiceDialParams(_SpekoModel):
     # the agent's ring_timeout_seconds. Outside 20-45 -> 400
     # RING_TIMEOUT_OUT_OF_RANGE.
     ring_timeout_seconds: Optional[int] = None
+    # Brings the user into the call when asked for. Calls without agent_id
+    # only (400 HANDOFF_REQUIRES_AGENTLESS_CALL).
+    handoff: Optional[VoiceDialHandoff] = None
     turn_handling: Optional[TurnHandling] = None
     telephony: Optional[TelephonyOptions] = None
     # Exact-match attributes used only for workspace webhook routing.

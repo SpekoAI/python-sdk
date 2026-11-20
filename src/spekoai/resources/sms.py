@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import AsyncIterator, Iterator
 from typing import Any, Optional, Union
 
@@ -67,10 +66,7 @@ class SmsResource:
             for event, event_id, data in iter_sse_with_id(resp.iter_text()):
                 if event == "heartbeat":
                     continue
-                payload = json.loads(data)
-                yield SmsStreamEvent.model_validate(
-                    {"event": event, "id": event_id, **payload}
-                )
+                yield SmsStreamEvent.model_validate({"event": event, "id": event_id, **data})
 
 
 class SmsMessagesResource:
@@ -310,9 +306,7 @@ class AsyncSmsResource:
             async for event, event_id, data in aiter_sse_with_id(resp.aiter_text()):
                 if event == "heartbeat":
                     continue
-                yield SmsStreamEvent.model_validate(
-                    {"event": event, "id": event_id, **json.loads(data)}
-                )
+                yield SmsStreamEvent.model_validate({"event": event, "id": event_id, **data})
 
 
 class AsyncSmsMessagesResource:

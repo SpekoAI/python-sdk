@@ -4,7 +4,7 @@ Guidance for AI coding agents working with `spekoai` (Python SDK).
 
 ## What this is
 
-`spekoai` is the official Python SDK for [Speko](https://speko.ai), an OpenRouter-style gateway for voice AI: one API that routes STT, LLM, and TTS requests across every major voice provider (10+ languages), with benchmark-driven provider selection and automatic failover. Full voice stack: speech-to-text, text-to-speech, and LLM completion (with tool calling) behind a single typed client, each with a streaming variant (`transcribe_stream`, `synthesize_stream`, `complete_stream`). Platform resources are exposed as namespaces mirroring the TypeScript SDK: `agents` (+ `agents.tools`), `knowledge_bases`, `phone_numbers`, `calls`, `callbacks`, `sessions` (transcript + live SSE `stream`), `voice.dial`, `voices`, `webhooks` (+ `webhooks.deliveries`), `usage`, and `credits`. Sync (`Speko`) and async (`AsyncSpeko`) clients are included; speech-to-speech realtime is async-only (`connect_realtime`). The package ships `py.typed`.
+`spekoai` is the official Python SDK for [Speko](https://speko.com), a voice agent platform for business phone calls. It builds AI phone agents, manages phone numbers, places calls, sends SMS, and runs speech-to-text, LLM and text-to-speech, with STT, LLM and TTS routed on numbers from the public benchmark at speko.com/benchmarks. Full voice stack: speech-to-text, text-to-speech, and LLM completion (with tool calling) behind a single typed client, each with a streaming variant (`transcribe_stream`, `synthesize_stream`, `complete_stream`). Platform resources are exposed as namespaces mirroring the TypeScript SDK: `agents` (+ `agents.tools`), `knowledge_bases`, `phone_numbers`, `calls`, `callbacks`, `sessions` (transcript + live SSE `stream`), `voice.dial`, `voices`, `webhooks` (+ `webhooks.deliveries`), `usage`, and `credits`. Sync (`Speko`) and async (`AsyncSpeko`) clients are included; speech-to-speech realtime is async-only (`connect_realtime`). The package ships `py.typed`.
 
 ## Install
 
@@ -33,10 +33,10 @@ Sign up at [platform.speko.dev](https://platform.speko.dev), mint a key at [plat
 
 ## Agent resources
 
-- Machine-readable docs index: <https://docs.speko.dev/llms.txt> (full corpus: <https://docs.speko.dev/llms-full.txt>)
+- Machine-readable docs index: <https://docs.speko.ai/llms.txt> (full corpus: <https://docs.speko.ai/llms-full.txt>)
 - Hosted MCP server: `https://mcp.speko.ai/mcp` (Platform API key). One-command setup for Claude Code, Codex, OpenCode, and Cursor: `npx @spekoai/mcp@latest init`
-- Python SDK docs: <https://docs.speko.dev/sdk-python/overview>
-- Full documentation: <https://docs.speko.dev>
+- Python SDK docs: <https://docs.speko.ai/sdk-python/overview>
+- Full documentation: <https://docs.speko.ai>
 
 ## Repo notes
 

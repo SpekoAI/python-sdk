@@ -1,4 +1,6 @@
-"""Speko Python SDK — one API, every voice provider."""
+"""Speko Python SDK: build AI phone agents, manage phone numbers, place calls, send SMS,
+and run speech-to-text, LLM and text-to-speech.
+"""
 
 from spekoai.client import (
     AsyncSpeko,

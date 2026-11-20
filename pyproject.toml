@@ -5,7 +5,7 @@ build-backend = "uv_build"
 [project]
 name = "spekoai"
 version = "0.2.5"
-description = "Official Speko Python SDK — one API, every voice provider"
+description = "Official Python SDK for Speko: build AI phone agents, manage phone numbers, place calls, send SMS, and run speech-to-text, LLM and text-to-speech."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -16,6 +16,9 @@ keywords = [
   "speko",
   "voice-ai",
   "voice-agent",
+  "ai-phone-agent",
+  "phone-calls",
+  "sms",
   "sdk",
   "stt",
   "tts",
@@ -24,13 +27,7 @@ keywords = [
   "speech-recognition",
   "llm-routing",
   "voice-routing",
-  "failover",
-  "fallback",
   "multilingual",
-  "elevenlabs",
-  "deepgram",
-  "cartesia",
-  "openrouter",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -62,7 +59,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/SpekoAI/python-sdk"
+Homepage = "https://speko.com"
+Documentation = "https://docs.speko.ai/sdk-python/overview"
 Repository = "https://github.com/SpekoAI/python-sdk"
 Issues = "https://github.com/SpekoAI/python-sdk/issues"
 Changelog = "https://github.com/SpekoAI/python-sdk/blob/main/CHANGELOG.md"

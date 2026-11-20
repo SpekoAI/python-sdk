@@ -1,11 +1,15 @@
 # spekoai (Python SDK)
 
-Official Python SDK for [Speko](https://speko.ai) — one API, every voice provider.
+Speko is a voice agent platform for business phone calls: teams build, test, run and monitor AI phone agents for scripted calls such as interviews, candidate screens and intake. It routes STT, LLM and TTS on numbers from the public benchmark at speko.com/benchmarks. Speko is based in San Francisco and is a Y Combinator S26 company.
 
-Speko is a voice AI gateway that benchmarks every STT, LLM, and TTS provider
-across languages, then routes each request to the best provider in real
-time. Failover is handled. You write one integration; Speko picks the
-right provider for every call.
+`spekoai` is the official Python SDK for Speko: build AI phone agents, manage phone numbers, place calls, send SMS, and run speech-to-text, LLM and text-to-speech.
+
+| | |
+|---|---|
+| Install | `pip install spekoai` |
+| Docs | https://docs.speko.ai/sdk-python/overview |
+| Site | https://speko.com |
+| Benchmarks | https://speko.com/benchmarks |
 
 ## Installation
 
@@ -25,16 +29,16 @@ from spekoai import Speko
 
 speko = Speko(api_key=os.environ["SPEKO_API_KEY"])
 
-# Transcribe — best STT provider auto-routed for your language
+# Transcribe: best STT provider auto-routed for your language
 audio = Path("call.wav").read_bytes()
 result = speko.transcribe(
     audio,
     language="es-MX",
-    region="us-east4",  # optional — rank streaming providers in this region
+    region="us-east4",  # optional: rank streaming providers in this region
 )
 print(result.text, result.provider, result.confidence)
 
-# Synthesize — best TTS provider auto-routed
+# Synthesize: best TTS provider auto-routed
 speech = speko.synthesize(
     "Hello world",
     language="en",
@@ -42,7 +46,7 @@ speech = speko.synthesize(
 ext = "mp3" if "mpeg" in speech.content_type else "pcm"
 Path(f"out.{ext}").write_bytes(speech.audio)
 
-# Complete — best LLM provider auto-routed
+# Complete: best LLM provider auto-routed
 completion = speko.complete(
     messages=[{"role": "user", "content": "Hi!"}],
     intent={"language": "en"},
@@ -139,7 +143,7 @@ not guaranteed after the deadline or event-loop termination.
 
 ## Documentation
 
-Full API reference and guides: <https://docs.speko.dev/sdk-python/overview>
+Full API reference and guides: <https://docs.speko.ai/sdk-python/overview>
 
 ## Contributing
 

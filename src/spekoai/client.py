@@ -417,7 +417,8 @@ class AsyncSynthesizeStream:
 
 
 class Speko:
-    """Speko client — one API, every voice provider.
+    """Speko client: build AI phone agents, manage phone numbers, place calls, send SMS,
+    and run speech-to-text, LLM and text-to-speech.
 
     Example::
 
